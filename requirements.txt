@@ -1,3 +1,2 @@
 girder-client
-girder-large-image-annotation
 pandas

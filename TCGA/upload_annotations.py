@@ -1,5 +1,4 @@
 import girder_client
-from girder_large_image_annotation.models.annotation import Annotation
 
 import json
 import getpass
@@ -30,15 +29,16 @@ start = datetime.now()
 client = girder_client.GirderClient(apiUrl=api_root)
 client.authenticate(username, password)
 
-user = next((user for user in client.listUser() if user.get('login') == username), None)
-
 for case in ANNOTATIONS_FOLDER.glob('*.json'):
     case_name = case.name.split('.')[0]
     with open(case) as f:
         annotation_contents = json.load(f)
     for item in client.listItem(folder_id, case_name):
-        print(item.get('name'))
-        # TODO: fix annotation creation
-        annotation = Annotation().createAnnotation(item, user, annotation_contents)
+        print('\t', item.get('name'))
+        client.post(
+            'annotation',
+            parameters=dict(itemId=item['_id']),
+            json=annotation_contents
+        )
 
 print(f'Completed upload in {datetime.now() - start} seconds.')
