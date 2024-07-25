@@ -1,0 +1,61 @@
+A unique identifier for the nucleus:
+0 "Identifier.ObjectCode"
+
+Nucleus bounding box information:
+24	"Unconstrained.Identifier.Xmin"
+25	"Unconstrained.Identifier.Ymin"
+26	"Unconstrained.Identifier.Xmax"
+27	"Unconstrained.Identifier.Ymax"
+
+Nucleus centroid location:
+28	"Unconstrained.Identifier.CentroidX"
+29	"Unconstrained.Identifier.CentroidY"
+
+A fine-grained classification of the nucleus, mapped to simplified "superclasses" below:
+30	"Unconstrained.Classif.StandardClass"
+
+The simplified classes used in the paper - eliminates rare or unreliably predictable classes:
+31	"Unconstrained.Classif.SuperClass"
+
+Class probabilities for fine-grained classes:
+32	"Unconstrained.ClassifProbab.CancerEpithelium"
+33	"Unconstrained.ClassifProbab.StromalCellNOS"
+34	"Unconstrained.ClassifProbab.ActiveStromalCellNOS"
+35	"Unconstrained.ClassifProbab.TILsCell"
+36	"Unconstrained.ClassifProbab.ActiveTILsCell"
+37	"Unconstrained.ClassifProbab.NormalEpithelium"
+38	"Unconstrained.ClassifProbab.OtherCell"
+39	"Unconstrained.ClassifProbab.UnknownOrAmbiguousCell"
+40	"Unconstrained.ClassifProbab.BACKGROUND"
+
+Class probabilities for simplified classes:
+41	"Unconstrained.SuperClassifProbab.EpithelialSuperclass"
+42	"Unconstrained.SuperClassifProbab.StromalSuperclass"
+43	"Unconstrained.SuperClassifProbab.TILsSuperclass"
+44	"Unconstrained.SuperClassifProbab.OtherSuperclass"
+45	"Unconstrained.SuperClassifProbab.AmbiguousSuperclass"
+46	"Unconstrained.SuperClassifProbab.BACKGROUND"
+
+Slide filename:
+47	"slide"
+
+Some encoding of the ROI position as a string
+48	"roiname"
+
+Skimage weighted centroids:
+49	"Identifier.WeightedCentroidX"
+50	"Identifier.WeightedCentroidY"
+https://github.com/DigitalSlideArchive/HistomicsTK/blob/d0a8fd93e36571e050c5e33a2f9247454fe8e0df/histomicstk/features/compute_nuclei_features.py#L191
+https://scikit-image.org/docs/stable/api/skimage.measure.html#skimage.measure.centroid
+
+Angle between the horizontal axis and the major axis of the ellipse that has the same second moments as the region, ranging from `-pi/2` to `pi/2` counter-clockwise:
+51	"Orientation.Orientation"
+https://github.com/DigitalSlideArchive/HistomicsTK/blob/d0a8fd93e36571e050c5e33a2f9247454fe8e0df/histomicstk/features/compute_morphometry_features.py#L32
+
+Size features:
+52	"Size.Area"
+53	"Size.ConvexHullArea"
+54	"Size.MajorAxisLength"
+55	"Size.MinorAxisLength"
+56	"Size.Perimeter"
+https://github.com/DigitalSlideArchive/HistomicsTK/blob/d0a8fd93e36571e050c5e33a2f9247454fe8e0df/histomicstk/features/compute_morphometry_features.py#L37

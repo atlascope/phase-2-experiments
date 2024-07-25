@@ -1,0 +1,118 @@
+{
+    "name": "AnnotationName",
+    "description": "This is a description",
+    "attributes": {
+        "key1": "value1",
+        "key2": [
+            "any",
+            {
+                "value": "can"
+            },
+            "go",
+            "here"
+        ]
+    },
+    "elements": [
+        {
+            "type": "point",
+            "label": {
+                "value": "This is a label",
+                "visibility": "hidden",
+                "fontSize": 3.4
+            },
+            "lineColor": "#000000",
+            "lineWidth": 1,
+            "center": [
+                123.3,
+                144.6,
+                -123
+            ]
+        },
+        {
+            "type": "arrow",
+            "points": [
+                [
+                    5,
+                    6,
+                    0
+                ],
+                [
+                    -17,
+                    6,
+                    0
+                ]
+            ],
+            "lineColor": "rgba(128, 128, 128, 0.5)"
+        },
+        {
+            "type": "circle",
+            "center": [
+                10.3,
+                -40.0,
+                0
+            ],
+            "radius": 5.3,
+            "fillColor": "#0000fF",
+            "lineColor": "rgb(3, 6, 8)"
+        },
+        {
+            "type": "rectangle",
+            "center": [
+                10.3,
+                -40.0,
+                0
+            ],
+            "width": 5.3,
+            "height": 17.3,
+            "rotation": 0,
+            "fillColor": "rgba(0, 255, 0, 1)"
+        },
+        {
+            "type": "ellipse",
+            "center": [
+                3.53,
+                4.8,
+                0
+            ],
+            "width": 15.7,
+            "height": 7.1,
+            "rotation": 0.34,
+            "fillColor": "rgba(128, 255, 0, 0.5)"
+        },
+        {
+            "type": "polyline",
+            "points": [
+                [
+                    5,
+                    6,
+                    0
+                ],
+                [
+                    -17,
+                    6,
+                    0
+                ],
+                [
+                    56,
+                    -45,
+                    6
+                ]
+            ],
+            "closed": true
+        },
+        {
+            "type": "rectanglegrid",
+            "id": "0123456789abcdef01234567",
+            "center": [
+                10.3,
+                -40.0,
+                0
+            ],
+            "width": 5.3,
+            "height": 17.3,
+            "rotation": 0,
+            "widthSubdivisions": 3,
+            "heightSubdivisions": 4
+        }
+    ]
+}
