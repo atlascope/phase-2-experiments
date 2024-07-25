@@ -79,8 +79,8 @@ for case in DOWNLOADS_FOLDER.glob('*'):
                         major, minor, centroidX, centroidY, orientation = [
                             feature['Size.MajorAxisLength'],
                             feature['Size.MinorAxisLength'],
-                            feature['Identifier.CentroidX'],
-                            feature['Identifier.CentroidY'],
+                            feature['Unconstrained.Identifier.CentroidX'],
+                            feature['Unconstrained.Identifier.CentroidY'],
                             feature['Orientation.Orientation'],
                         ]
                         # Only multiply by 2 if getMetadata().getMagnification() is 40 (CSV data done at 20x)
@@ -89,12 +89,6 @@ for case in DOWNLOADS_FOLDER.glob('*'):
                         centroidY *= 2
                         centroidX += region.get('left', 0)
                         centroidY += region.get('top', 0)
-                        # case_features.append(dict(
-                        #     type='point',
-                        #     lineColor='#00FF00',
-                        #     lineWidth=2,
-                        #     center=[centroidX, centroidY, 0],
-                        # ))
                         case_features.append(dict(
                             type='ellipse',
                             lineColor='#00FF00',
