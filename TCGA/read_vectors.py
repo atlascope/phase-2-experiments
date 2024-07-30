@@ -42,4 +42,5 @@ def get_case_vector(case_name):
                 results = pandas.concat([results, vector])
         else:
             print('No prop file for', meta_vector_file.name)
+    print(f'\tFound {len(results)} features.')
     return results
