@@ -32,5 +32,9 @@ Any additional requirements can be installed with the following command:
 
     python -m TCGA.upload_annotations
 
+5. View TSNE Visualizations
+
+    python -m TCGA.TSNE.scikit
+
 
 [girder-link]: https://girder.readthedocs.io/
