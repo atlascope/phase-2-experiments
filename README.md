@@ -34,7 +34,7 @@ Any additional requirements can be installed with the following command:
 
 5. View TSNE Visualizations
 
-    python -m TCGA.TSNE.scikit
+    python -m TCGA.TSNE.display_tsne
 
 
 [girder-link]: https://girder.readthedocs.io/
