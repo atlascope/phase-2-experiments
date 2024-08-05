@@ -8,6 +8,7 @@ from pathlib import Path
 
 
 ANNOTATIONS_FOLDER = Path(__file__).parent / 'annotations'
+OVERWRITE = True
 
 
 with open('conf.json') as f:
@@ -35,6 +36,16 @@ for case in ANNOTATIONS_FOLDER.glob('*.json'):
         annotation_contents = json.load(f)
     for item in client.listItem(folder_id, case_name):
         print('\t', item.get('name'))
+        if OVERWRITE:
+            for old_annotation in client.get(
+                'annotation',
+                parameters=dict(itemId=item['_id']),
+            ):
+                old_id = old_annotation.get('_id')
+                print(f'\t Deleting old annotation {old_id}.')
+                client.delete(
+                    f'annotation/{old_id}',
+                )
         client.post(
             'annotation',
             parameters=dict(itemId=item['_id']),
