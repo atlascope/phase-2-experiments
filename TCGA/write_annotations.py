@@ -7,10 +7,15 @@ from datetime import datetime
 
 
 from .read_vectors import get_case_vector
+from .TSNE.scikit import get_tsne_result
 
 
 DOWNLOADS_FOLDER = Path(__file__).parent / 'downloads'
 ANNOTATIONS_FOLDER = Path(__file__).parent / 'annotations'
+NUM_ROIS = 1
+INCLUDE_TSNE = True
+TSNE_PERPLEXITY = 100
+TSNE_NUM_COMPONENTS = 2
 
 
 print(f'Converting feature vectors to annotations...')
@@ -20,9 +25,11 @@ start = datetime.now()
 for case in DOWNLOADS_FOLDER.glob('*'):
     case_features = []
     case_name = case.name.split('.')[0]
-
     print(f'\t{case_name}')
-    vector = get_case_vector(case_name)
+
+    vector = get_case_vector(case_name, rois=[
+        f.name.replace('.csv', '') for f in list((case / 'nucleiMeta').glob('*.csv'))[:NUM_ROIS]
+    ])
 
     # assumes roiname is a string like "TCGA-3C-AALI-01Z-00-DX1_roi-0_left-15953_top-45779_right-18001_bottom-47827"
     for roi_name, roi_group in vector.groupby('roiname'):
@@ -45,6 +52,9 @@ for case in DOWNLOADS_FOLDER.glob('*'):
             width=(region.get('right') - region.get('left')),
             height=(region.get('bottom') - region.get('top')),
         ))
+        tsne_result = None
+        if INCLUDE_TSNE:
+            tsne_result = get_tsne_result(case_name, roi_name, TSNE_NUM_COMPONENTS, TSNE_PERPLEXITY)
         for index, feature in roi_group.iterrows():
             major, minor, centroidX, centroidY, orientation = [
                 feature['Size.MajorAxisLength'],
@@ -59,6 +69,13 @@ for case in DOWNLOADS_FOLDER.glob('*'):
             centroidY *= 2
             centroidX += region.get('left', 0)
             centroidY += region.get('top', 0)
+
+            meta = dict(
+                id=feature['Identifier.ObjectCode']
+            )
+            if tsne_result is not None:
+                meta.update({f'tsne_{k}': v for k, v in tsne_result.iloc[index].to_dict().items()})
+
             case_features.append(dict(
                 type='ellipse',
                 lineColor='#00FF00',
@@ -67,6 +84,7 @@ for case in DOWNLOADS_FOLDER.glob('*'):
                 width=minor * 2,
                 height=major * 2,
                 rotation=(0 - orientation),  # negated orientation
+                user=meta  # adhere to schema; user is unconstrained
             ))
 
     # export case_features to annotation file
