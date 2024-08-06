@@ -14,6 +14,26 @@ COLORMAP = colormaps['Set1']
 INCLUDE_TSNE = True
 TSNE_PERPLEXITY = 100
 TSNE_NUM_COMPONENTS = 2
+TSNE_EXCLUDE_COLUMNS = [
+    "Identifier.ObjectCode",
+    "Identifier.Xmin",
+    "Identifier.Ymin",
+    "Identifier.Xmax",
+    "Identifier.Ymax",
+    "Identifier.CentroidX",
+    "Identifier.CentroidY",
+    "Unconstrained.Identifier.Xmin",
+    "Unconstrained.Identifier.Ymin",
+    "Unconstrained.Identifier.Xmax",
+    "Unconstrained.Identifier.Ymax",
+    "Unconstrained.Identifier.CentroidX",
+    "Unconstrained.Identifier.CentroidY",
+    "slide",
+    "roiname",
+    "Identifier.WeightedCentroidX",
+    "Identifier.WeightedCentroidY",
+]
+
 ROIS = [
     "TCGA-3C-AALI-01Z-00-DX1_roi-2_left-15953_top-51923_right-18001_bottom-53971",
     "TCGA-3C-AALI-01Z-00-DX1_roi-3_left-15953_top-53971_right-18001_bottom-56019",

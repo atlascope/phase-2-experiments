@@ -5,7 +5,7 @@ import matplotlib.cm as cm
 from sklearn import manifold
 
 from ..read_vectors import get_case_vector
-from ..constants import TSNE_RESULTS_FOLDER
+from ..constants import TSNE_RESULTS_FOLDER, TSNE_EXCLUDE_COLUMNS
 
 
 def get_tsne_result(
@@ -26,7 +26,10 @@ def get_tsne_result(
         vector = get_case_vector(case_name, rois=rois)
         # remove any columns that cannot be cast to float
         vector.drop(
-            [c for c in vector.columns if str(vector[c].dtype) != 'float64'],
+            [
+                c for c in vector.columns
+                if str(vector[c].dtype) != 'float64' or c in TSNE_EXCLUDE_COLUMNS
+            ],
             axis=1,
             inplace=True
         )
