@@ -1,14 +1,11 @@
 import pandas
-from pathlib import Path
 from datetime import datetime
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 from sklearn import manifold
 
 from ..read_vectors import get_case_vector
-
-
-RESULTS_FOLDER = Path(__file__).parent / 'results'
+from ..constants import TSNE_RESULTS_FOLDER
 
 
 def get_tsne_result(
@@ -19,7 +16,7 @@ def get_tsne_result(
     max_iterations=300,
     color_label_key=None
 ):
-    filepath = RESULTS_FOLDER / 'scikit' / case_name / f'{n_components}_components' / f'perplexity_{perplexity}' / '&'.join(rois)
+    filepath = TSNE_RESULTS_FOLDER / 'scikit' / case_name / f'{n_components}_components' / f'perplexity_{perplexity}' / '&'.join(rois)
     if filepath.exists():
         return pandas.read_csv(filepath, index_col=0)
     else:

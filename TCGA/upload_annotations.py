@@ -4,17 +4,10 @@ import json
 import getpass
 
 from datetime import datetime
-from pathlib import Path
+from .constants import ANNOTATIONS_FOLDER, CONF, OVERWRITE
 
 
-ANNOTATIONS_FOLDER = Path(__file__).parent / 'annotations'
-OVERWRITE = True
-
-
-with open('conf.json') as f:
-    conf = json.load(f)
-
-target_server = conf.get('target_server', {})
+target_server = CONF.get('target_server', {})
 api_root = target_server.get('api_root')
 folder_id = target_server.get('folder_id')
 username = input('Username: ')

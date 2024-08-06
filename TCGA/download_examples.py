@@ -3,15 +3,10 @@ import json
 
 from datetime import datetime
 from pathlib import Path
+from .constants import DOWNLOADS_FOLDER, CONF
 
 
-DOWNLOADS_FOLDER = Path(__file__).parent / 'downloads'
-
-
-with open('conf.json') as f:
-    conf = json.load(f)
-
-sample_data_server = conf.get('sample_data_server', {})
+sample_data_server = CONF.get('sample_data_server', {})
 api_root = sample_data_server.get('api_root')
 folder_id = sample_data_server.get('folder_id')
 

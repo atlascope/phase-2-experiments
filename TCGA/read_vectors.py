@@ -1,12 +1,5 @@
-import girder_client
-import json
-import math
 import pandas
-from pathlib import Path
-from datetime import datetime
-
-
-DOWNLOADS_FOLDER = Path(__file__).parent / 'downloads'
+from .constants import DOWNLOADS_FOLDER
 
 
 def get_case_vector(case_name, rois=None):
