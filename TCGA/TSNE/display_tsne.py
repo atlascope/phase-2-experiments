@@ -3,6 +3,7 @@ import numpy
 from pathlib import Path
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
+from matplotlib import colormaps
 
 from .scikit import get_tsne_result as get_scikit_tsne_result
 
@@ -10,7 +11,7 @@ from .scikit import get_tsne_result as get_scikit_tsne_result
 DOWNLOADS_FOLDER = Path(__file__).parent.parent / 'downloads'
 COLUMN_NAMES = Path(__file__).parent.parent / 'column_names.json'
 CLASSIF_PREFIX = 'Unconstrained.ClassifProbab.'
-COLORMAP = 'Set1'
+COLORMAP = colormaps['Set1']
 
 LIBRARY = 'scikit'
 PERPLEXITIES = [5, 30, 50, 100]
