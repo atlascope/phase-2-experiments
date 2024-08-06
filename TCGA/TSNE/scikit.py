@@ -13,20 +13,20 @@ RESULTS_FOLDER = Path(__file__).parent / 'results'
 
 def get_tsne_result(
     case_name,
-    roiname,
+    rois,
     n_components=2,
     perplexity=100,
     max_iterations=300,
     color_label_key=None
 ):
-    filepath = RESULTS_FOLDER / 'scikit' / case_name / f'{n_components}_components' / f'perplexity_{perplexity}' / roiname
+    filepath = RESULTS_FOLDER / 'scikit' / case_name / f'{n_components}_components' / f'perplexity_{perplexity}' / '&'.join(rois)
     if filepath.exists():
         return pandas.read_csv(filepath, index_col=0)
     else:
         if not filepath.parent.exists():
             filepath.parent.mkdir(parents=True, exist_ok=True)
 
-        vector = get_case_vector(case_name, rois=[roiname])
+        vector = get_case_vector(case_name, rois=rois)
         # remove any columns that cannot be cast to float
         vector.drop(
             [c for c in vector.columns if str(vector[c].dtype) != 'float64'],
@@ -37,7 +37,7 @@ def get_tsne_result(
         if color_label_key is not None:
             colors = [color_label_key[c] for c in vector[color_label_key.keys()].idxmax(axis=1)]
         else:
-            colors = []
+            colors = None
         print(f'\tEvaluating TSNE with perplexity={perplexity} for {len(vector)} features...')
         start = datetime.now()
         tsne = manifold.TSNE(
@@ -53,7 +53,8 @@ def get_tsne_result(
                 result,
                 columns=[['x', 'y', 'z'][i] for i in range(n_components)]
             )
-            df = df.assign(c=colors)
+            if colors is not None:
+                df = df.assign(c=colors)
             df.to_csv(filepath)
             print(f'\tCompleted TSNE evaluation in {datetime.now() - start} seconds.')
             return df
