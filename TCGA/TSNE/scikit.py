@@ -1,8 +1,7 @@
 import pandas
 from datetime import datetime
-import matplotlib.pyplot as plt
-import matplotlib.cm as cm
 from sklearn import manifold
+from sklearn.preprocessing import normalize
 
 from ..read_vectors import get_case_vector
 from ..constants import TSNE_RESULTS_FOLDER, TSNE_EXCLUDE_COLUMNS
@@ -14,16 +13,26 @@ def get_tsne_result(
     n_components=2,
     perplexity=100,
     max_iterations=300,
-    color_label_key=None
+    color_label_key=None,
+    vector=None
 ):
-    filepath = TSNE_RESULTS_FOLDER / 'scikit' / case_name / f'{n_components}_components' / f'perplexity_{perplexity}' / '&'.join(rois)
+    filename = 'all.csv'
+    if rois is not None:
+        filename = '&'.join(rois) + '.csv'
+    filepath = TSNE_RESULTS_FOLDER / 'scikit' / case_name / f'{n_components}_components' / f'perplexity_{perplexity}' / filename
     if filepath.exists():
         return pandas.read_csv(filepath, index_col=0)
     else:
         if not filepath.parent.exists():
             filepath.parent.mkdir(parents=True, exist_ok=True)
 
-        vector = get_case_vector(case_name, rois=rois)
+        if vector is None:
+            vector = get_case_vector(case_name, rois=rois)
+        if color_label_key is not None:
+            colors = [color_label_key[c] for c in vector[color_label_key.keys()].idxmax(axis=1)]
+        else:
+            colors = None
+
         # remove any columns that cannot be cast to float
         vector.drop(
             [
@@ -34,10 +43,8 @@ def get_tsne_result(
             inplace=True
         )
         vector.fillna(-1, inplace=True)
-        if color_label_key is not None:
-            colors = [color_label_key[c] for c in vector[color_label_key.keys()].idxmax(axis=1)]
-        else:
-            colors = None
+        normalize(vector, axis=1, norm='l1')
+
         print(f'\tEvaluating TSNE with perplexity={perplexity} for {len(vector)} features...')
         start = datetime.now()
         tsne = manifold.TSNE(
