@@ -34,6 +34,9 @@ TSNE_EXCLUDE_COLUMNS = [
     "Identifier.WeightedCentroidY",
 ]
 
+
+# Specify None to cover all ROIS
+# ROIS = None
 ROIS = [
     "TCGA-3C-AALI-01Z-00-DX1_roi-2_left-15953_top-51923_right-18001_bottom-53971",
     "TCGA-3C-AALI-01Z-00-DX1_roi-3_left-15953_top-53971_right-18001_bottom-56019",

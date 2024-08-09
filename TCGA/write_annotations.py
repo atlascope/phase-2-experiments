@@ -33,12 +33,12 @@ for case in DOWNLOADS_FOLDER.glob('*'):
             n_components=TSNE_NUM_COMPONENTS,
             perplexity=TSNE_PERPLEXITY,
             color_label_key=COLOR_LABEL_KEY,
-            vector=vector,
+            vector=vector.copy(),
         )
 
     # assumes roiname is a string like "TCGA-3C-AALI-01Z-00-DX1_roi-0_left-15953_top-45779_right-18001_bottom-47827"
     for roi_name, roi_group in vector.groupby('roiname'):
-        if roi_name in ROIS:
+        if ROIS is not None and roi_name in ROIS:
             components = roi_name.replace(f'{case_name}_', '').split('_')
             region = {}
             for component in components:
