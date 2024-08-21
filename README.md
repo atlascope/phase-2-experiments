@@ -1,6 +1,11 @@
 # Atlascope Phase II experiments
 Various experimental scripts for Atlascope Phase II use cases
 
+<!-- TODO: update this -->
+docker compose up
+Girder -> Create User
+Girder -> Create Assetstore (https://girder.readthedocs.io/en/latest/deployment.html#create-an-assetstore)
+
 
 ## Requirements
 To view images and annotations, it is assumed that you have some instance of [Girder][girder-link] with Large Image installed where you can upload items. Upload scripts will require authentication to this server.
