@@ -28,10 +28,18 @@ def on_startup():
 async def get_image_items():
     with Session(engine) as session:
         try:
-            images = session.query(ImageItem.imageId, ImageItem.imageName).all()
+            images = session.query(
+                ImageItem.imageId,
+                ImageItem.imageName,
+                ImageItem.apiURL,
+            ).all()
             return [
-                {"imageId": image_id, "imageName": image_name}
-                for image_id, image_name in images
+                dict(
+                    id=id,
+                    name=name,
+                    apiUrl=api_url,
+                )
+                for id, name, api_url in images
             ]
 
         except Exception as e:
@@ -40,18 +48,16 @@ async def get_image_items():
 @app.post("/images/")
 async def add_image_item(imageItemData: ImageItem):
     imageId = imageItemData.imageId
+    imageName = imageItemData.imageName
     apiUrl = imageItemData.apiURL
     with Session(engine) as session:
         exist = session.query(ImageItem).filter(ImageItem.imageId == imageId).first()
-
         if not exist:
             gc = girder_client.GirderClient(apiUrl=apiUrl)
             try:
-                itemInfo = gc.getItem(imageId)
-                print(itemInfo)
                 tileData = gc.get(f"item/{imageId}/tiles")
                 imageItem = ImageItem(
-                    imageName=itemInfo["name"],
+                    imageName=imageName,
                     apiURL=apiUrl,
                     imageId=imageId,
                     magnification=tileData["magnification"],
@@ -63,7 +69,6 @@ async def add_image_item(imageItemData: ImageItem):
                     tileWidth=tileData["tileWidth"],
                     tileHeight=tileData["tileHeight"],
                 )
-
                 session.add(imageItem)
                 session.commit()
                 session.refresh(imageItem)
