@@ -1,18 +1,19 @@
-import girder_client
 import json
-import math
-import pandas
-from pathlib import Path
 from datetime import datetime
+from matplotlib.colors import to_hex
 
-
-DOWNLOADS_FOLDER = Path(__file__).parent / 'downloads'
-ANNOTATIONS_FOLDER = Path(__file__).parent / 'annotations'
-
-
-with open('conf.json') as f:
-    conf = json.load(f)
-
+from .read_vectors import get_case_vector
+from .TSNE.scikit import get_tsne_result
+from .constants import (
+    DOWNLOADS_FOLDER,
+    ANNOTATIONS_FOLDER,
+    ROIS,
+    INCLUDE_TSNE,
+    TSNE_NUM_COMPONENTS,
+    TSNE_PERPLEXITY,
+    COLOR_LABEL_KEY,
+    COLORMAP,
+)
 
 print(f'Converting feature vectors to annotations...')
 start = datetime.now()
@@ -21,87 +22,78 @@ start = datetime.now()
 for case in DOWNLOADS_FOLDER.glob('*'):
     case_features = []
     case_name = case.name.split('.')[0]
-
     print(f'\t{case_name}')
+    vector = get_case_vector(case_name, rois=ROIS)
 
-    meta_vectors = case / 'nucleiMeta'
-    prop_vectors = case / 'nucleiProps'
+    tsne_result = None
+    if INCLUDE_TSNE:
+        tsne_result = get_tsne_result(
+            case_name,
+            ROIS,
+            n_components=TSNE_NUM_COMPONENTS,
+            perplexity=TSNE_PERPLEXITY,
+            color_label_key=COLOR_LABEL_KEY,
+            vector=vector.copy(),
+        )
 
-    meta_vector_files = list(meta_vectors.glob('*.csv'))
-    prop_vector_files = list(prop_vectors.glob('*.csv'))
+    # assumes roiname is a string like "TCGA-3C-AALI-01Z-00-DX1_roi-0_left-15953_top-45779_right-18001_bottom-47827"
+    for roi_name, roi_group in vector.groupby('roiname'):
+        if ROIS is not None and roi_name in ROIS:
+            components = roi_name.replace(f'{case_name}_', '').split('_')
+            region = {}
+            for component in components:
+                key, value = component.split('-')
+                if key != 'roi':
+                    region[key] = int(value)
+            # print(region)
+            roi_center = [
+                (region.get('right') + region.get('left')) / 2,
+                (region.get('bottom') + region.get('top')) / 2,
+            ]
+            case_features.append(dict(
+                type='rectangle',
+                lineColor='#FF0000',
+                lineWidth=2,
+                center=[*roi_center, 0],
+                width=(region.get('right') - region.get('left')),
+                height=(region.get('bottom') - region.get('top')),
+            ))
+            for index, feature in roi_group.iterrows():
+                major, minor, centroidX, centroidY, orientation = [
+                    feature['Size.MajorAxisLength'],
+                    feature['Size.MinorAxisLength'],
+                    feature['Unconstrained.Identifier.CentroidX'],
+                    feature['Unconstrained.Identifier.CentroidY'],
+                    feature['Orientation.Orientation'],
+                ]
+                # Only multiply by 2 if getMetadata().getMagnification() is 40 (CSV data done at 20x)
+                # coordinates are relative to ROI and half resolution
+                centroidX *= 2
+                centroidY *= 2
+                centroidX += region.get('left', 0)
+                centroidY += region.get('top', 0)
 
-    print(f'\tReading features in {len(meta_vector_files)} regions.')
+                color = '#00FF00'
+                meta = dict(
+                    id=feature['Identifier.ObjectCode']
+                )
+                if tsne_result is not None:
+                    meta.update({f'tsne_{k}': v for k, v in tsne_result.iloc[index].to_dict().items()})
+                    c = meta.get('tsne_c')
+                    if c is not None:
+                        color = to_hex(COLORMAP.colors[int(c)])
 
-    if meta_vectors.exists() and prop_vectors.exists():
-        for meta_vector_file in meta_vector_files:
-            prop_vector_file = next((
-                f for f in prop_vector_files
-                if f.name == meta_vector_file.name
-            ), None)
-            if prop_vector_file:
-                meta = pandas.read_csv(
-                    str(meta_vector_file),
-                    usecols=lambda x: 'Unnamed' not in x
-                ).reset_index(drop=True)
-                props = pandas.read_csv(
-                    str(prop_vector_file),
-                    usecols=lambda x: 'Unnamed' not in x
-                ).reset_index(drop=True)
-                intersection_cols = list(meta.columns.intersection(props.columns))
-                # print(intersection_cols)
-                props = props.drop(intersection_cols, axis=1)
-                combo = pandas.concat([meta, props], axis=1)
-                # print(meta.shape, props.shape, combo.shape)
-                # print(list(combo.columns))
-
-                # assumes roiname is a string like "TCGA-3C-AALI-01Z-00-DX1_roi-0_left-15953_top-45779_right-18001_bottom-47827"
-                for roiname in combo['roiname'].mode():
-                    components = roiname.replace(f'{case_name}_', '').split('_')
-                    region = {}
-                    for component in components:
-                        key, value = component.split('-')
-                        if key != 'roi':
-                            region[key] = int(value)
-                    # print(region)
-                    roi_center = [
-                        (region.get('right') + region.get('left')) / 2,
-                        (region.get('bottom') + region.get('top')) / 2,
-                    ]
-                    case_features.append(dict(
-                        type='rectangle',
-                        lineColor='#FF0000',
-                        lineWidth=2,
-                        center=[*roi_center, 0],
-                        width=(region.get('right') - region.get('left')),
-                        height=(region.get('bottom') - region.get('top')),
-                    ))
-                    for index, feature in combo[combo['roiname'] == roiname].iterrows():
-                        major, minor, centroidX, centroidY, orientation = [
-                            feature['Size.MajorAxisLength'],
-                            feature['Size.MinorAxisLength'],
-                            feature['Unconstrained.Identifier.CentroidX'],
-                            feature['Unconstrained.Identifier.CentroidY'],
-                            feature['Orientation.Orientation'],
-                        ]
-                        # Only multiply by 2 if getMetadata().getMagnification() is 40 (CSV data done at 20x)
-                        # coordinates are relative to ROI and half resolution
-                        centroidX *= 2
-                        centroidY *= 2
-                        centroidX += region.get('left', 0)
-                        centroidY += region.get('top', 0)
-                        case_features.append(dict(
-                            type='ellipse',
-                            lineColor='#00FF00',
-                            lineWidth=2,
-                            center=[centroidX, centroidY, 0],
-                            width=minor * 2,
-                            height=major * 2,
-                            rotation=(0 - orientation),  # negated orientation
-                        ))
-            else:
-                print('No prop file for', meta_vector_file.name)
-    else:
-        print('No feature vector data found for', case_name)
+                case_features.append(dict(
+                    type='ellipse',
+                    lineColor=color,
+                    lineWidth=2,
+                    fillColor=color,
+                    center=[centroidX, centroidY, 0],
+                    width=minor * 2,
+                    height=major * 2,
+                    rotation=(0 - orientation),  # negated orientation
+                    user=meta  # adhere to schema; user is unconstrained
+                ))
 
     # export case_features to annotation file
     annotation = dict(

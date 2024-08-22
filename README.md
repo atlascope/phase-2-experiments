@@ -18,19 +18,23 @@ Any additional requirements can be installed with the following command:
 ## TCGA Example
 1. Download example data (this may take up to 30 minutes)
 
-    python TCGA/download_examples.py
+    python -m  TCGA.download_examples
 
 2. Upload images to Girder
 
-    python TCGA/upload_images.py
+    python -m TCGA.upload_images
 
 3. Create annotation file from feature vector data
 
-    python TCGA/write_annotations.py
+    python -m TCGA.write_annotations
 
 4. Upload annotations to Girder
 
-    python TCGA/upload_annotations.py
+    python -m TCGA.upload_annotations
+
+5. View TSNE Visualizations
+
+    python -m TCGA.TSNE.display_tsne
 
 
 [girder-link]: https://girder.readthedocs.io/

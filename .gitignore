@@ -166,3 +166,4 @@ cython_debug/
 TCGA/downloads
 TCGA/annotations/*
 !TCGA/annotations/test_annotation.json
+TCGA/TSNE/results/*
