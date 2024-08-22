@@ -167,3 +167,6 @@ TCGA/downloads
 TCGA/annotations/*
 !TCGA/annotations/test_annotation.json
 TCGA/TSNE/results/*
+
+atlascope_prototype/client/node_modules
+!atlascope_prototype/client/dist
