@@ -16,22 +16,27 @@ Various experimental scripts for Atlascope Phase II use cases
 6. Install Python requirements for TCGA scripts: `pip install -r requirements.txt`
 
 ## TCGA Example
+
 1. Download example data (this may take up to 90 minutes)
 
-    python -m  TCGA.download_examples
+    python -m TCGA.examples download
 
-2. Upload images to Girder
+2. Upload images to Atlascope
 
-    python -m TCGA.upload_images
+    python -m TCGA.examples upload
 
-3. Create annotation file from feature vector data
+3. View images at ``localhost:8080``.
 
-    python -m TCGA.write_annotations
+4. Process feature vectors and upload resulting annotation files
 
-4. Upload annotations to Girder
+    python -m TCGA.process_feature_vectors --upload
 
-    python -m TCGA.upload_annotations
+    **Note:** The above command takes many arguments for custom processing. Use ``python -m TCGA.process_feature_vectors -h`` to read the help menu, or refer to the example usages shown below.
 
-5. View TSNE Visualizations
+### Process Feature Vectors Example Commands
 
-    python -m TCGA.TSNE.display_tsne
+    python -m TCGA.process_feature_vectors --cases TCGA-3C-AALI-01Z-00-DX1 --rois TCGA-3C-AALI-01Z-00-DX1_roi-2_left-15953_top-51923_right-18001_bottom-53971
+
+    python -m TCGA.process_feature_vectors --reduce-dims --plot --groupby class
+
+    python -m TCGA.process_feature_vectors --cases TCGA-3C-AALI-01Z-00-DX1 TCGA-3C-AALJ-01Z-00-DX1 --rois TCGA-3C-AALI-01Z-00-DX1_roi-2_left-15953_top-51923_right-18001_bottom-53971 --reduce-dims --reduce-dims-func tsne --no-cache --plot --exclude-column-patterns slide roiname Unconstrained.Identifier.* Identifier.* --groupby class --upload
