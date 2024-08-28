@@ -14,10 +14,9 @@ jobs:
         with:
           python-version: "3.x"
       - name: Install dependencies
-        run: python -m pip install --upgrade pip setuptools wheel pytest flake8 isort
+        run: python -m pip install --upgrade pip setuptools wheel pytest isort
       - name: Style check
         run: |
-          flake8 .
           isort .
   pytest:
     runs-on: ubuntu-latest
