@@ -1,13 +1,14 @@
 import argparse
-import girder_client
 import getpass
-import requests
 import json
 import sys
-
 from datetime import datetime
 from pathlib import Path
-from .constants import DOWNLOADS_FOLDER, CONF
+
+import girder_client
+import requests
+
+from .constants import CONF, DOWNLOADS_FOLDER
 
 
 def download_examples(cases):

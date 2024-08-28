@@ -1,13 +1,11 @@
 import girder_client
 import pandas
-
 from fastapi import FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import Session
 
-from .services import engine, create_db_and_tables
 from .models import ImageItem
-
+from .services import create_db_and_tables, engine
 
 app = FastAPI()
 app.add_middleware(

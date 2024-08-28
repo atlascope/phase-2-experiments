@@ -1,5 +1,6 @@
-import subprocess
 import re
+import subprocess
+
 import pytest
 
 BASE_COMMAND = ["python", "-m", "TCGA.process_feature_vectors"]

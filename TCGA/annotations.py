@@ -1,7 +1,8 @@
-import pandas
 import json
 from pathlib import Path
 from typing import Optional
+
+import pandas
 
 from .constants import CONF
 

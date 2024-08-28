@@ -1,12 +1,13 @@
-import pandas
 import warnings
-import matplotlib
-import matplotlib.pyplot as plt
-import umap as umap_lib
 from datetime import datetime
 from pathlib import Path
-from sklearn import manifold
 from typing import Dict
+
+import matplotlib
+import matplotlib.pyplot as plt
+import pandas
+import umap as umap_lib
+from sklearn import manifold
 
 # suppress warnings
 warnings.simplefilter("ignore")

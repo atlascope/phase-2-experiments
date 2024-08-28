@@ -2,19 +2,15 @@ import argparse
 import getpass
 import re
 from pathlib import Path
+
 from matplotlib import colormaps
 from sklearn.preprocessing import normalize
 
+from .annotations import upload_annotation, write_annotation
+from .constants import (ANNOTATIONS_FOLDER, CLASS_PREFIX, COLUMN_NAMES,
+                        DOWNLOADS_FOLDER, REDUCE_DIMS_RESULTS_FOLDER)
 from .read_vectors import get_case_vector
-from .annotations import write_annotation, upload_annotation
-from .reduce_dims import umap, tsne, plot_results
-from .constants import (
-    DOWNLOADS_FOLDER,
-    ANNOTATIONS_FOLDER,
-    REDUCE_DIMS_RESULTS_FOLDER,
-    COLUMN_NAMES,
-    CLASS_PREFIX,
-)
+from .reduce_dims import plot_results, tsne, umap
 
 
 def process_feature_vectors(
