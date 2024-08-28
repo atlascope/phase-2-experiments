@@ -36,7 +36,6 @@ def test_help():
         [
             "TCGA-3C-AALI-01Z-00-DX1_roi-2_left-15953_top-51923_right-18001_bottom-53971",
             "TCGA-3C-AALI-01Z-00-DX1_roi-3_left-15953_top-53971_right-18001_bottom-56019",
-            "TCGA-3C-AALI-01Z-00-DX1_roi-4_left-15953_top-56019_right-18001_bottom-58067",
         ],
         None,
     ],
@@ -44,15 +43,15 @@ def test_help():
 def test_case_rois(rois):
     args = [
         "--cases",
-        "TCGA-3C-AALI-01Z-00-DX1",
+        "test",
     ]
     if rois is not None:
         args += ["--rois", *rois]
 
-    expected_n_regions = 630 if rois is None else 3
-    expected_n_features = 489293 if rois is None else 3586
+    expected_n_regions = 3 if rois is None else 2
+    expected_n_features = 3586 if rois is None else 2412
     expected_output = [
-        "Evaluating TCGA-3C-AALI-01Z-00-DX1.",
+        "Evaluating test.",
         f"Reading features in {expected_n_regions} region\\(s\\).",
         f"Found {expected_n_features} features.",
         'Evaluating group "all".',
@@ -65,7 +64,7 @@ def test_case_rois(rois):
 def test_umap_groups(groupby):
     args = [
         "--cases",
-        "TCGA-3C-AALI-01Z-00-DX1",
+        "test",
         "--rois",
         "TCGA-3C-AALI-01Z-00-DX1_roi-2_left-15953_top-51923_right-18001_bottom-53971",
         "--reduce-dims",
@@ -75,7 +74,7 @@ def test_umap_groups(groupby):
         args += ["--groupby", groupby]
 
     expected_output = [
-        'Evaluating TCGA-3C-AALI-01Z-00-DX1.',
+        'Evaluating test.',
         'Reading features in 1 region\\(s\\).',
         'Found 1303 features.',
     ]
@@ -109,7 +108,7 @@ def test_umap_groups(groupby):
 def test_tsne():
     args = [
         "--cases",
-        "TCGA-3C-AALI-01Z-00-DX1",
+        "test",
         "--rois",
         "TCGA-3C-AALI-01Z-00-DX1_roi-2_left-15953_top-51923_right-18001_bottom-53971",
         "--reduce-dims",
@@ -118,7 +117,7 @@ def test_tsne():
         "tsne",
     ]
     expected_output = [
-        'Evaluating TCGA-3C-AALI-01Z-00-DX1.',
+        'Evaluating test.',
         'Reading features in 1 region\\(s\\).',
         'Found 1303 features.',
         'Evaluating group "all".',

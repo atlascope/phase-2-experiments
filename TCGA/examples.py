@@ -27,7 +27,8 @@ def download_examples(cases):
 
     for case_folder in client.listFolder(folder_id):
         case_name = case_folder.get('name')
-        if cases is None or case_name in cases:
+        if (cases is None and 'test' not in case_name) or (cases is not None and case_name in cases):
+            print(f'Downloading {case_name}.')
             client.downloadFolderRecursive(case_folder.get('_id'), DOWNLOADS_FOLDER / case_name)
 
     print(f'Completed download in {datetime.now() - start} seconds.')
@@ -68,10 +69,10 @@ def upload_images(cases):
 
     for case in DOWNLOADS_FOLDER.glob('*'):
         case_name = case.name.split('.')[0]
-        if cases is None or case_name in cases:
+        if (cases is None and 'test' not in case_name) or (cases is not None and case_name in cases):
             for image in case.glob('*'):
                 if image.is_file():
-                    print(image.name)
+                    print(f'Uploading image for {case_name}.')
                     with open(image) as f:
                         item = client.createItem(
                             folder.get('_id'),
@@ -93,8 +94,8 @@ def upload_images(cases):
                         if response.status_code == 200:
                             print(f'Recorded ImageItem {case.name} in Atlascope.')
 
-    response = requests.get(f'{atlascope_api_root}images/')
-    print(response.json())
+    # response = requests.get(f'{atlascope_api_root}images/')
+    # print(response.json())
 
     print(f'Completed upload in {datetime.now() - start} seconds.')
 
@@ -107,7 +108,7 @@ def main(raw_args=None):
     parser.add_argument('command', choices=['upload', 'download'], help='Action to perform.')
     parser.add_argument(
         '--cases', nargs='*',
-        help='List of case names to process. If not specified, process all downloaded cases.'
+        help='List of case names to process. If not specified, process all non-test cases.'
     )
     args = vars(parser.parse_args(raw_args))
     command, cases = args.get('command'), args.get('cases')
