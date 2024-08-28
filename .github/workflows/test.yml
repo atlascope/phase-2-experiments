@@ -1,0 +1,39 @@
+name: Tests
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+jobs:
+  style:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip setuptools wheel pytest flake8 isort
+      - name: Style check
+        run: |
+          flake8 .
+          isort .
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel pytest
+          python -m pip install -r requirements.txt
+      - name: Download example data
+        run: python -m TCGA.examples download --cases TCGA-3C-AALI-01Z-00-DX1
+      - name: Run Tests
+        run: python -m pytest TCGA/tests

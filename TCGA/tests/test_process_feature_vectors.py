@@ -1,0 +1,127 @@
+import subprocess
+import re
+import pytest
+
+BASE_COMMAND = ["python", "-m", "TCGA.process_feature_vectors"]
+
+
+def get_output(*args):
+    p = subprocess.Popen(
+        ["python", "-m", "TCGA.process_feature_vectors", *args],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    out, err = p.communicate()
+    if p.returncode != 0:
+        return [l.strip() for l in err.decode().split("\n") if len(l)]
+    return [l.strip() for l in out.decode().split("\n") if len(l)]
+
+
+def compare_outputs(actual, expected):
+    assert len(expected) == len(actual)
+    for index, line in enumerate(actual):
+        assert re.match(fr'{expected[index]}', line)
+
+
+def test_help():
+    output = get_output("-h")
+    assert len(output) == 32
+    assert output[0].startswith("usage:")
+
+
+@pytest.mark.parametrize(
+    "rois",
+    [
+        [
+            "TCGA-3C-AALI-01Z-00-DX1_roi-2_left-15953_top-51923_right-18001_bottom-53971",
+            "TCGA-3C-AALI-01Z-00-DX1_roi-3_left-15953_top-53971_right-18001_bottom-56019",
+            "TCGA-3C-AALI-01Z-00-DX1_roi-4_left-15953_top-56019_right-18001_bottom-58067",
+        ],
+        None,
+    ],
+)
+def test_case_rois(rois):
+    args = [
+        "--cases",
+        "TCGA-3C-AALI-01Z-00-DX1",
+    ]
+    if rois is not None:
+        args += ["--rois", *rois]
+
+    expected_n_regions = 630 if rois is None else 3
+    expected_n_features = 489293 if rois is None else 3586
+    expected_output = [
+        "Evaluating TCGA-3C-AALI-01Z-00-DX1.",
+        f"Reading features in {expected_n_regions} region\\(s\\).",
+        f"Found {expected_n_features} features.",
+        'Evaluating group "all".',
+        "Done.",
+    ]
+    compare_outputs(get_output(*args), expected_output)
+
+
+@pytest.mark.parametrize("groupby", ["roi", "class", None])
+def test_umap_groups(groupby):
+    args = [
+        "--cases",
+        "TCGA-3C-AALI-01Z-00-DX1",
+        "--rois",
+        "TCGA-3C-AALI-01Z-00-DX1_roi-2_left-15953_top-51923_right-18001_bottom-53971",
+        "--reduce-dims",
+        "--no-cache",
+    ]
+    if groupby is not None:
+        args += ["--groupby", groupby]
+
+    expected_output = [
+        'Evaluating TCGA-3C-AALI-01Z-00-DX1.',
+        'Reading features in 1 region\\(s\\).',
+        'Found 1303 features.',
+    ]
+    expected_groups = [
+        ('all', 1303)
+    ]
+    if groupby == 'roi':
+        expected_groups = [
+            ('TCGA-3C-AALI-01Z-00-DX1_roi-2_left-15953_top-51923_right-18001_bottom-53971', 1303)
+        ]
+    elif groupby == 'class':
+        expected_groups = [
+            ('ActiveTILsCell', 1),
+            ('CancerEpithelium', 632),
+            ('NormalEpithelium', 3),
+            ('StromalCellNOS', 535),
+            ('TILsCell', 124),
+            ('UnknownOrAmbiguousCell', 8)
+        ]
+    for group_name, feature_count in expected_groups:
+        expected_output += [
+            f'Evaluating group "{group_name}".',
+            f'Evaluating UMAP for {feature_count} features... Completed in ([\d:.]*) seconds.',
+        ]
+    expected_output += [
+        'Done.',
+    ]
+    compare_outputs(get_output(*args), expected_output)
+
+
+def test_tsne():
+    args = [
+        "--cases",
+        "TCGA-3C-AALI-01Z-00-DX1",
+        "--rois",
+        "TCGA-3C-AALI-01Z-00-DX1_roi-2_left-15953_top-51923_right-18001_bottom-53971",
+        "--reduce-dims",
+        "--no-cache",
+        "--reduce-dims-func",
+        "tsne",
+    ]
+    expected_output = [
+        'Evaluating TCGA-3C-AALI-01Z-00-DX1.',
+        'Reading features in 1 region\\(s\\).',
+        'Found 1303 features.',
+        'Evaluating group "all".',
+        'Evaluating TSNE for 1303 features... Completed in ([\d:.]*) seconds.',
+        'Done.'
+    ]
+    compare_outputs(get_output(*args), expected_output)
