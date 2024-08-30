@@ -34,14 +34,16 @@ def download_examples(cases):
     print(f'Completed download in {datetime.now() - start} seconds.')
 
 
-def upload_images(cases):
+def upload_images(cases, username=None, password=None):
     target_server = CONF.get('target_server', {})
     atlascope_server = CONF.get('atlascope_server', {})
     girder_api_root = target_server.get('api_root')
     atlascope_api_root = atlascope_server.get('api_root')
 
-    username = input('Girder Username: ')
-    password = getpass.getpass('Girder Password: ')
+    if username is None:
+        username = input('Girder Username: ')
+    if password is None:
+        password = getpass.getpass('Girder Password: ')
 
     if not girder_api_root or not atlascope_api_root:
         raise ValueError(
@@ -61,7 +63,7 @@ def upload_images(cases):
 
     folder = client.createFolder(
         collection.get('_id'),
-        'TCGA',
+        'Examples',
         parentType='collection',
         public=True,
         reuseExisting=True,
@@ -83,8 +85,9 @@ def upload_images(cases):
                         client.addMetadataToItem(item_id, {
                             'project': 'Atlascope'
                         })
-                        client.uploadFileToItem(item_id, str(image))
-                        # TODO: is there a way to automatically generate a large-image record for this item?
+                        file_id, current = client.isFileCurrent(item_id, image.name, str(image))
+                        if not current:
+                            file_obj = client.uploadFileToItem(item_id, str(image))
 
                         response = requests.post(f'{atlascope_api_root}images/', json=dict(
                             imageId=item_id,
@@ -94,8 +97,12 @@ def upload_images(cases):
                         if response.status_code == 200:
                             print(f'Recorded ImageItem {case.name} in Atlascope.')
 
-    # response = requests.get(f'{atlascope_api_root}images/')
-    # print(response.json())
+    # create large images for all items in folder
+    client.put(f'/large_image/folder/{folder.get("_id")}/tiles?recurse=true')
+
+    # fetch list of Atlascope image records
+    atl_images = requests.get(f'{atlascope_api_root}images/').json()
+    print(f'Atlascope server has {len(atl_images)} images.')
 
     print(f'Completed upload in {datetime.now() - start} seconds.')
 
@@ -110,11 +117,22 @@ def main(raw_args=None):
         '--cases', nargs='*',
         help='List of case names to process. If not specified, process all non-test cases.'
     )
+    parser.add_argument(
+        '--username', type=str, help='Girder username for upload'
+    )
+    parser.add_argument(
+        '--password', type=str, help='Girder password for upload'
+    )
     args = vars(parser.parse_args(raw_args))
-    command, cases = args.get('command'), args.get('cases')
+    command, cases, username, password = (
+        args.get('command'),
+        args.get('cases'),
+        args.get('username'),
+        args.get('password'),
+    )
 
     if command == 'upload':
-        upload_images(cases)
+        upload_images(cases, username=username, password=password)
     elif command == 'download':
         download_examples(cases)
 

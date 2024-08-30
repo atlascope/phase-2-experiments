@@ -32,7 +32,14 @@ jobs:
         run: |
           python -m pip install --upgrade pip setuptools wheel pytest
           python -m pip install -r requirements.txt
-      - name: Download example data
-        run: python -m TCGA.examples download --cases test
+      - uses: hoverkraft-tech/compose-action@v2.0.1
+        with:
+          compose-file: atlascope_prototype/docker-compose.yml
+      - name: Init Girder
+        working-directory: atlascope_prototype
+        run: |
+          docker compose exec girder python3 -c "import init;init.init_girder('admin', 'atlascope')"
       - name: Run Tests
-        run: python -m pytest TCGA/tests
+        run: |
+          python -m pytest TCGA/tests/test_examples.py
+          python -m pytest TCGA/tests/test_process_feature_vectors.py

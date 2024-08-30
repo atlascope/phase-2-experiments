@@ -1,31 +1,12 @@
-import re
-import subprocess
-
 import pytest
+from utils import get_output, compare_outputs
+
 
 BASE_COMMAND = ["python", "-m", "TCGA.process_feature_vectors"]
 
 
-def get_output(*args):
-    p = subprocess.Popen(
-        ["python", "-m", "TCGA.process_feature_vectors", *args],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-    out, err = p.communicate()
-    if p.returncode != 0:
-        return [l.strip() for l in err.decode().split("\n") if len(l)]
-    return [l.strip() for l in out.decode().split("\n") if len(l)]
-
-
-def compare_outputs(actual, expected):
-    assert len(expected) == len(actual)
-    for index, line in enumerate(actual):
-        assert re.match(fr'{expected[index]}', line)
-
-
 def test_help():
-    output = get_output("-h")
+    output = get_output(*BASE_COMMAND, "-h")
     assert len(output) == 32
     assert output[0].startswith("usage:")
 
@@ -57,7 +38,7 @@ def test_case_rois(rois):
         'Evaluating group "all".',
         "Done.",
     ]
-    compare_outputs(get_output(*args), expected_output)
+    compare_outputs(get_output(*BASE_COMMAND, *args), expected_output)
 
 
 @pytest.mark.parametrize("groupby", ["roi", "class", None])
@@ -102,7 +83,7 @@ def test_umap_groups(groupby):
     expected_output += [
         'Done.',
     ]
-    compare_outputs(get_output(*args), expected_output)
+    compare_outputs(get_output(*BASE_COMMAND, *args), expected_output)
 
 
 def test_tsne():
@@ -124,4 +105,4 @@ def test_tsne():
         'Evaluating TSNE for 1303 features... Completed in ([\d:.]*) seconds.',
         'Done.'
     ]
-    compare_outputs(get_output(*args), expected_output)
+    compare_outputs(get_output(*BASE_COMMAND, *args), expected_output)
