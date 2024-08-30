@@ -29,10 +29,9 @@ services:
       - 8080:8080
   mongodb:
     image: mongo:4.4
-    ports:
-      - "27017"
     volumes:
       - "/data/db"
+    network_mode: host
   girder:
     build:
       context: .
@@ -40,11 +39,12 @@ services:
     command: [
       "--host", "0.0.0.0",
       "--port", "3000",
-      "--database", "mongodb://mongodb:27017/girder",
     ]
+    volumes:
+      - ./docker/init.py:/girder/init.py
     environment:
+      - API_ROOT=http://localhost:3000/api/v1
       - GIRDER_SETTING_CORE_BRAND_NAME=Atlascope
-    ports:
-      - "3000:3000"
-    links:
-      - "mongodb:mongodb"
+      - GIRDER_SETTING_CORS_ALLOW_ORIGIN=http://localhost:8080
+      - GIRDER_MONGO_URI=mongodb://localhost:27017/girder
+    network_mode: host
