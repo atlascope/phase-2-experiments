@@ -1,8 +1,8 @@
 import os
 
 from sqlmodel import SQLModel, create_engine
-from .models import *
 
+from .models import *
 
 DATABASE_URL = os.environ.get('DB_URL')
 engine = create_engine(DATABASE_URL)

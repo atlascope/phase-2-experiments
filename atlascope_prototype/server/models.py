@@ -1,6 +1,7 @@
-from sqlalchemy import Column, String
-from sqlmodel import SQLModel, Field
 from typing import Optional
+
+from sqlalchemy import Column, String
+from sqlmodel import Field, SQLModel
 
 
 class ImageItem(SQLModel, table=True):

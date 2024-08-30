@@ -2,3 +2,4 @@ girder-client
 pandas
 scikit-learn
 umap-learn
+matplotlib
