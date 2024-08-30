@@ -97,7 +97,7 @@ def plot_results(
         result_title, result_data = result_items[i]
         x = result_data['x']
         y = result_data['y']
-        ax.scatter(x, y)
+        ax.scatter(x, y, s=2)
         ax.set_title(result_title)
         i += 1
     plt.show()
