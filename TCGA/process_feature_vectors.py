@@ -78,7 +78,7 @@ def process_feature_vectors(
 
             # show result plot
             if reduce_dims and plot:
-                plot_results(all_results)
+                plot_results(all_results, title=case_name)
 
     print('Done.')
 
