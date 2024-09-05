@@ -97,7 +97,7 @@ def plot_results(
 ):
     result_items = list(results.items())
     subplots_width = round(math.sqrt(len(result_items)))
-    subplots_height = round(len(result_items) / subplots_width)
+    subplots_height = math.ceil(len(result_items) / subplots_width)
     fig, subplots = plt.subplots(
         subplots_width,
         subplots_height,
