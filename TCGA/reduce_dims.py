@@ -1,3 +1,5 @@
+import math
+import os
 import warnings
 from datetime import datetime
 from pathlib import Path
@@ -8,6 +10,8 @@ import matplotlib.pyplot as plt
 import pandas
 import umap as umap_lib
 from sklearn import manifold
+
+from .constants import PLOTS_FOLDER
 
 # suppress warnings
 warnings.simplefilter("ignore")
@@ -87,17 +91,34 @@ def tsne(
 # assumes n_components == 2
 def plot_results(
     results: Dict[str, pandas.DataFrame],
+    title='Dimensionality Reduction Results',
+    show=True,
+    save=True,
 ):
     result_items = list(results.items())
-    fig, subplots = plt.subplots(len(result_items), sharex=True, sharey=True)
-    fig.suptitle('Dimensionality Reduction Results')
+    subplots_width = round(math.sqrt(len(result_items)))
+    subplots_height = math.ceil(len(result_items) / subplots_width)
+    fig, subplots = plt.subplots(
+        subplots_width,
+        subplots_height,
+        sharex=True,
+        sharey=True,
+    )
+    fig.suptitle(title)
 
     i = 0
-    for ax in subplots:
-        result_title, result_data = result_items[i]
-        x = result_data['x']
-        y = result_data['y']
-        ax.scatter(x, y, s=2)
-        ax.set_title(result_title)
-        i += 1
-    plt.show()
+    for row in subplots:
+        for ax in row:
+            if i < len(result_items):
+                result_title, result_data = result_items[i]
+                x = result_data['x']
+                y = result_data['y']
+                ax.scatter(x, y, s=2)
+                ax.set_title(result_title)
+                i += 1
+    if not PLOTS_FOLDER.exists():
+        os.mkdir(PLOTS_FOLDER)
+    if save:
+        plt.savefig(PLOTS_FOLDER / (title.replace(' ', '_') + '.png'))
+    if show:
+        plt.show()
