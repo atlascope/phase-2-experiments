@@ -89,16 +89,20 @@ def upload_images(cases, username=None, password=None):
                         if not current:
                             file_obj = client.uploadFileToItem(item_id, str(image))
 
-                        response = requests.post(f'{atlascope_api_root}images/', json=dict(
-                            imageId=item_id,
-                            imageName=case.name,
-                            apiURL=girder_api_root,
-                        ))
-                        if response.status_code == 200:
-                            print(f'Recorded ImageItem {case.name} in Atlascope.')
-
     # create large images for all items in folder
     client.put(f'/large_image/folder/{folder.get("_id")}/tiles?recurse=true')
+
+    # create ImageItem records in Atlascope
+    for item in client.listItem(folder.get('_id')):
+        id = item.get('_id')
+        name = item.get('name')
+        response = requests.post(f'{atlascope_api_root}images/', json=dict(
+            imageId=id,
+            imageName=name,
+            apiURL=girder_api_root,
+        ))
+        if response.status_code == 200:
+            print(f'Recorded ImageItem {name} in Atlascope.')
 
     # fetch list of Atlascope image records
     atl_images = requests.get(f'{atlascope_api_root}images/').json()
