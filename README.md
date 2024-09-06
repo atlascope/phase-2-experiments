@@ -39,4 +39,4 @@ Various experimental scripts for Atlascope Phase II use cases
 
     python -m TCGA.process_feature_vectors --reduce-dims --plot --groupby class
 
-    python -m TCGA.process_feature_vectors --cases TCGA-3C-AALI-01Z-00-DX1 TCGA-3C-AALJ-01Z-00-DX1 --rois TCGA-3C-AALI-01Z-00-DX1_roi-2_left-15953_top-51923_right-18001_bottom-53971 --reduce-dims --reduce-dims-func tsne --no-cache --plot --exclude-column-patterns slide roiname Unconstrained.Identifier.* Identifier.* --groupby class --upload
+    python -m TCGA.process_feature_vectors --cases TCGA-3C-AALI-01Z-00-DX1 TCGA-3C-AALJ-01Z-00-DX1 --rois TCGA-3C-AALI-01Z-00-DX1_roi-2_left-15953_top-51923_right-18001_bottom-53971 --reduce-dims --reduce-dims-func tsne --no-cache --plot --exclude-column-patterns slide roiname Unconstrained.Identifier.* Identifier.* SuperClassifProbab.* ClassifProbab.* Classif.* Unconstrained.Classif.* Unconstrained.SuperClassifProbab.* --groupby class --upload
