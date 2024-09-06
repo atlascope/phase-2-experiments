@@ -3,8 +3,9 @@ import pandas
 from fastapi import FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import Session
+from typing import List
 
-from .models import ImageItem
+from .models import ImageItem, Feature
 from .services import create_db_and_tables, engine
 
 app = FastAPI()
@@ -76,3 +77,30 @@ async def add_image_item(imageItemData: ImageItem):
                 print(f"Error while saving ImageItem: {e}")
         else:
             return exist
+
+# FEATURES
+
+@app.post("/images/{imageItemId}/features/")
+def add_image_feature(imageItemId: int, featureDatas: List[Feature]):
+    with Session(engine) as session:
+        image_features = session.query(Feature).filter(Feature.imageItemId == imageItemId)
+        for featureData in featureDatas:
+            exist = image_features.filter(Feature.index == featureData.index).first()
+            if not exist:
+                try:
+                    feature = Feature(
+                        imageItemId=imageItemId,
+                        index=featureData.index,
+                        attrs=featureData.attrs,
+                    )
+                    session.add(feature)
+                except Exception as e:
+                    print(f"Error while saving Feature: {e}")
+            else:
+                exist.attrs = featureData.attrs
+        session.commit()
+        image_features = session.query(Feature).filter(Feature.imageItemId == imageItemId)
+        return dict(
+            imageItemId=imageItemId,
+            featureIndices=[f.index for f in image_features]
+        )

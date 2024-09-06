@@ -9,6 +9,10 @@ import girder_client
 import requests
 
 from .constants import CONF, DOWNLOADS_FOLDER
+from .read_vectors import get_case_vector
+
+
+FEATURE_BATCH_SIZE = 10000
 
 
 def download_examples(cases):
@@ -89,20 +93,40 @@ def upload_images(cases, username=None, password=None):
                         if not current:
                             file_obj = client.uploadFileToItem(item_id, str(image))
 
-    # create large images for all items in folder
-    client.put(f'/large_image/folder/{folder.get("_id")}/tiles?recurse=true')
+                        # create large images for all items in folder
+                        client.put(f'/large_image/folder/{folder.get("_id")}/tiles?recurse=true')
 
-    # create ImageItem records in Atlascope
-    for item in client.listItem(folder.get('_id')):
-        id = item.get('_id')
-        name = item.get('name')
-        response = requests.post(f'{atlascope_api_root}images/', json=dict(
-            imageId=id,
-            imageName=name,
-            apiURL=girder_api_root,
-        ))
-        if response.status_code == 200:
-            print(f'Recorded ImageItem {name} in Atlascope.')
+                        # create ImageItem & Feature records in Atlascope
+                        response = requests.post(f'{atlascope_api_root}images/', json=dict(
+                            imageId=item_id,
+                            imageName=case.name,
+                            apiURL=girder_api_root,
+                        ))
+                        image_item = response.json()
+                        image_item_id = image_item.get('id')
+                        if response.status_code == 200:
+                            print(f'Recorded ImageItem {case.name} in Atlascope.')
+                        else:
+                            print(response)
+
+                        feature_vector = get_case_vector(case.name)
+                        feature_data = json.loads(feature_vector.to_json(orient='records'))
+                        batch_offset = 0
+                        while batch_offset < len(feature_data):
+                            batch = feature_data[batch_offset: batch_offset + FEATURE_BATCH_SIZE]
+                            response = requests.post(
+                                f'{atlascope_api_root}images/{image_item_id}/features/',
+                                json=[
+                                    dict(index=i + batch_offset, attrs=f)
+                                    for i, f in enumerate(batch)
+                                ]
+                            )
+                            batch_offset += FEATURE_BATCH_SIZE
+                            if response.status_code != 200:
+                                print(response)
+                                break
+                        indices = response.json().get('featureIndices')
+                        print(f'Recorded {len(indices)} Features for {case.name} in Atlascope.')
 
     # fetch list of Atlascope image records
     atl_images = requests.get(f'{atlascope_api_root}images/').json()
