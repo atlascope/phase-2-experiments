@@ -45,6 +45,6 @@ services:
     environment:
       - API_ROOT=http://localhost:3000/api/v1
       - GIRDER_SETTING_CORE_BRAND_NAME=Atlascope
-      - GIRDER_SETTING_CORS_ALLOW_ORIGIN=http://localhost:8080
+      - GIRDER_SETTING_CORE_CORS_ALLOW_ORIGIN=http://localhost:8080
       - GIRDER_MONGO_URI=mongodb://localhost:27017/girder
     network_mode: host
