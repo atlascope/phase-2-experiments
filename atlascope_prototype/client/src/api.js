@@ -6,6 +6,11 @@ export async function listImageItems() {
 }
 
 export async function fetchImageTileInfo(image) {
-  const url = `${image.apiUrl}/item/${image.id}/tiles`;
+  const url = `${image.apiUrl}/item/${image.girderId}/tiles`;
+  return (await axios.get(url)).data;
+}
+
+export async function fetchImageFeatures(image) {
+  const url = `${process.env.VUE_APP_API_ROOT}/images/${image.id}/features`;
   return (await axios.get(url)).data;
 }

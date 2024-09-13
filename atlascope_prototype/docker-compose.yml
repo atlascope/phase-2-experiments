@@ -15,6 +15,10 @@ services:
       - ./server:/atlascope/server/
     environment:
       - DB_URL=postgresql://admin:adminpass@localhost:5432/atlascope
+      - GIRDER_SERVER=http://localhost:3000/api/v1/
+      - EXAMPLE_SERVER=https://data.kitware.com/api/v1/
+      - EXAMPLE_FOLDER_ID=66a14ec45d2551c516b1d5d7
+      - EXAMPLE_PATH=/data/examples
     network_mode: host
   client:
     build:
@@ -32,6 +36,7 @@ services:
     volumes:
       - "/data/db"
     network_mode: host
+    attach: false
   girder:
     build:
       context: .
@@ -48,3 +53,4 @@ services:
       - GIRDER_SETTING_CORE_CORS_ALLOW_ORIGIN=http://localhost:8080
       - GIRDER_MONGO_URI=mongodb://localhost:27017/girder
     network_mode: host
+    attach: false

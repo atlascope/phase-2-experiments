@@ -98,8 +98,8 @@ def upload_images(cases, username=None, password=None):
 
                         # create ImageItem & Feature records in Atlascope
                         response = requests.post(f'{atlascope_api_root}images/', json=dict(
-                            imageId=item_id,
-                            imageName=case.name,
+                            girderId=item_id,
+                            name=case.name,
                             apiURL=girder_api_root,
                         ))
                         image_item = response.json()
@@ -108,25 +108,6 @@ def upload_images(cases, username=None, password=None):
                             print(f'Recorded ImageItem {case.name} in Atlascope.')
                         else:
                             print(response)
-
-                        feature_vector = get_case_vector(case.name)
-                        feature_data = json.loads(feature_vector.to_json(orient='records'))
-                        batch_offset = 0
-                        while batch_offset < len(feature_data):
-                            batch = feature_data[batch_offset: batch_offset + FEATURE_BATCH_SIZE]
-                            response = requests.post(
-                                f'{atlascope_api_root}images/{image_item_id}/features/',
-                                json=[
-                                    dict(index=i + batch_offset, attrs=f)
-                                    for i, f in enumerate(batch)
-                                ]
-                            )
-                            batch_offset += FEATURE_BATCH_SIZE
-                            if response.status_code != 200:
-                                print(response)
-                                break
-                        indices = response.json().get('featureIndices')
-                        print(f'Recorded {len(indices)} Features for {case.name} in Atlascope.')
 
     # fetch list of Atlascope image records
     atl_images = requests.get(f'{atlascope_api_root}images/').json()

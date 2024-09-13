@@ -6,10 +6,16 @@ Various experimental scripts for Atlascope Phase II use cases
 ### Run prototype application
 
 1. Run `cd atlascope_prototype`
+
 2. Run `docker compose up`
+
 3. While the docker containers are running, in another terminal, run `docker compose exec girder python3 init.py` and supply a username and password for your admin user.
-4. Navigate to `localhost:3000` in your browser. You have an instance of [Girder](https://girder.readthedocs.io) running.
-5. Navigate to `localhost:8080` in your browser. This is the Atlascope web client.
+
+4. Similarly while the containers are running, run `docker compose exec server python3 -m server.populate` and supply the same username and password to authenticate the population script. This will download examples from the example server, upload them to your local Girder instance, and make records for these images and their feature vectors in Atlascope. This will take some time for all example cases; you can narrow the set of example cases to load by specifying `--cases [case_names]`.
+
+5. Navigate to `localhost:3000` in your browser. You have an instance of [Girder](https://girder.readthedocs.io) running.
+
+6. Navigate to `localhost:8080` in your browser. This is the Atlascope web client.
 
 ### Run TCGA Examples
 
@@ -21,15 +27,9 @@ Various experimental scripts for Atlascope Phase II use cases
 
     python -m TCGA.examples download
 
-4. Upload images to Atlascope
+4. Process feature vectors
 
-    python -m TCGA.examples upload
-
-5. View images at ``localhost:8080``.
-
-6. Process feature vectors and upload resulting annotation files
-
-    python -m TCGA.process_feature_vectors --upload
+    python -m TCGA.process_feature_vectors
 
     **Note:** The above command takes many arguments for custom processing. Use ``python -m TCGA.process_feature_vectors -h`` to read the help menu, or refer to the example usages shown below.
 

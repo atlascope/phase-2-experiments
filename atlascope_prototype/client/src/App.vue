@@ -1,17 +1,28 @@
 <script lang="js">
 import geo from "geojs";
-import { defineComponent, onMounted, ref } from "vue";
-import { listImageItems, fetchImageTileInfo } from "./api";
+import { defineComponent, onMounted, ref, watch } from "vue";
+import { listImageItems, fetchImageTileInfo, fetchImageFeatures } from "./api";
+import drawFeatures from "./drawFeatures.js";
+
 
 export default defineComponent({
   setup() {
     const images = ref([]);
+    const currentImage = ref();
     const map = ref();
+    const imageLayer = ref();
+    const featureLayer = ref();
+    const features = ref();
+    const numFeatures = ref(0);
 
     function selectImage(images) {
       if (images.length){
-        const image = images[0]
-        fetchImageTileInfo(image).then((tileInfo) => {
+        currentImage.value = images[0];
+        imageLayer.value = undefined;
+        featureLayer.value = undefined;
+        features.value = undefined;
+        numFeatures.value = 0;
+        fetchImageTileInfo(currentImage.value).then((tileInfo) => {
           let params = geo.util.pixelCoordinateParams(
             '#map',
             tileInfo.sizeX,
@@ -20,9 +31,22 @@ export default defineComponent({
             tileInfo.tileHeight
           );
           map.value = geo.map(params.map);
-          params.layer.url = `${image.apiUrl}/item/${image.id}/tiles/zxy/{z}/{x}/{y}`;
-          const imageLayer = map.value.createLayer('osm', params.layer);
-          return imageLayer;
+          params.layer.url = `${currentImage.value.apiUrl}/item/${currentImage.value.girderId}/tiles/zxy/{z}/{x}/{y}`;
+          imageLayer.value = map.value.createLayer('osm', params.layer);
+          featureLayer.value = map.value.createLayer('feature', {
+            zIndex: 1,
+            features: ['line', 'marker']
+            // clickToEdit: false,
+          });
+        })
+        fetchImageFeatures(currentImage.value).then((data) => {
+          features.value = data;
+
+          // JSON implementation
+          data.forEach((roi) => numFeatures.value += roi.features.length)
+
+          // Vector implementation
+          // numFeatures.value = data.length
         })
       }
     }
@@ -33,9 +57,15 @@ export default defineComponent({
       })
     });
 
+    watch(features, () => drawFeatures(features.value, featureLayer.value))
+    watch(featureLayer, () => drawFeatures(features.value, featureLayer.value))
+
     return {
       images,
+      currentImage,
       selectImage,
+      features,
+      numFeatures,
     };
   },
 });
@@ -59,6 +89,12 @@ export default defineComponent({
     <v-main>
       <div id="map" style="height: 100%"></div>
     </v-main>
+    <v-navigation-drawer v-if="currentImage" location="right" app>
+      <v-progress-linear v-if="!features" indeterminate absolute />
+      <v-card-text>
+        {{ features ? numFeatures : "Fetching" }} Features
+      </v-card-text>
+    </v-navigation-drawer>
   </v-app>
 </template>
 

@@ -1,6 +1,7 @@
 fastapi
 girder-client
 pandas
+pgvector
 psycopg2-binary
 sqlalchemy
 sqlmodel
