@@ -71,9 +71,10 @@ def process_feature_vectors(
                     groups = vector.groupby('classification')
 
                 # record groups
-                group_records[groupby] = list(groups.groups.keys())
-                with open(group_records_file, 'w') as f:
-                    json.dump(group_records, f)
+                if groupby is not None:
+                    group_records[groupby] = list(groups.groups.keys())
+                    with open(group_records_file, 'w') as f:
+                        json.dump(group_records, f)
 
                 # evaluate groups
                 for group_name, group in groups:
