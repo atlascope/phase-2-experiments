@@ -13,10 +13,11 @@ from .constants import (ANNOTATIONS_FOLDER, CLASS_PREFIX, COLUMN_NAMES,
                         DOWNLOADS_FOLDER, REDUCE_DIMS_RESULTS_FOLDER)
 from .read_vectors import get_case_vector
 from .reduce_dims import plot_results, tsne, umap
+from .clustering import find_clusters
 
 
 def process_feature_vectors(
-    cases, rois, upload, reduce_dims, reduce_dims_func, no_cache, plot, exclude_column_patterns, groupby
+    cases, rois, upload, reduce_dims, reduce_dims_func, no_cache, plot, exclude_column_patterns, groupby, clusters
 ):
     username = None
     password = None
@@ -110,9 +111,15 @@ def process_feature_vectors(
                     if upload:
                         upload_annotation(case_name, annotation_filepath, username, password)
 
+            # find clusters
+            cluster_results = None
+            if reduce_dims and clusters:
+                clusters_file = case_results_folder / 'clusters.json'
+                cluster_results = find_clusters(all_results, clusters_file=clusters_file, use_cache=not no_cache)
+
             # show result plot
             if reduce_dims and plot:
-                plot_results(all_results, title=case_name)
+                plot_results(all_results, title=case_name, cluster_results=cluster_results)
 
     print('Done.')
 
@@ -157,8 +164,12 @@ def main(raw_args=None):
         '--groupby', choices=['roi', 'class'],
         help='Process feature vectors in multiple groups, separated by this attribute. If not specified, process all feature vectors in one group.'
     )
+    parser.add_argument(
+        '--clusters', action='store_true',
+        help='Find clusters among dim reduction results. Only used if --reduce-dims is specified.'
+    )
     args = vars(parser.parse_args(raw_args))
-    cases, rois, upload, reduce_dims, reduce_dims_func, no_cache, plot, exclude_column_patterns, groupby = (
+    cases, rois, upload, reduce_dims, reduce_dims_func, no_cache, plot, exclude_column_patterns, groupby, clusters = (
         args.get('cases'),
         args.get('rois'),
         args.get('upload'),
@@ -168,9 +179,10 @@ def main(raw_args=None):
         args.get('plot'),
         args.get('exclude_column_patterns'),
         args.get('groupby'),
+        args.get('clusters')
     )
     process_feature_vectors(
-       cases, rois, upload, reduce_dims, reduce_dims_func, no_cache, plot, exclude_column_patterns, groupby
+       cases, rois, upload, reduce_dims, reduce_dims_func, no_cache, plot, exclude_column_patterns, groupby, clusters
     )
 
 
