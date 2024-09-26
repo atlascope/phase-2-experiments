@@ -13,11 +13,11 @@ from .constants import (ANNOTATIONS_FOLDER, CLASS_PREFIX, COLUMN_NAMES,
                         DOWNLOADS_FOLDER, REDUCE_DIMS_RESULTS_FOLDER)
 from .read_vectors import get_case_vector
 from .reduce_dims import plot_results, tsne, umap
-from .clustering import find_clusters
+from .clustering import find_clusters, find_cluster_distinction_columns
 
 
 def process_feature_vectors(
-    cases, rois, upload, reduce_dims, reduce_dims_func, no_cache, plot, exclude_column_patterns, groupby, clusters
+    cases, rois, upload, reduce_dims, reduce_dims_func, no_cache, plot, exclude_column_patterns, groupby, clusters, cluster_distinctions,
 ):
     username = None
     password = None
@@ -116,6 +116,8 @@ def process_feature_vectors(
             if reduce_dims and clusters:
                 clusters_file = case_results_folder / 'clusters.json'
                 cluster_results = find_clusters(all_results, clusters_file=clusters_file, use_cache=not no_cache)
+                if cluster_distinctions:
+                    find_cluster_distinction_columns(case_name, clusters_file, groups, print_results=True)
 
             # show result plot
             if reduce_dims and plot:
@@ -168,8 +170,12 @@ def main(raw_args=None):
         '--clusters', action='store_true',
         help='Find clusters among dim reduction results. Only used if --reduce-dims is specified.'
     )
+    parser.add_argument(
+        '--cluster-distinctions', action='store_true',
+        help='Determine which columns are most statistically different between clusters. Only used if --reduce-dims and --clusters are specified.'
+    )
     args = vars(parser.parse_args(raw_args))
-    cases, rois, upload, reduce_dims, reduce_dims_func, no_cache, plot, exclude_column_patterns, groupby, clusters = (
+    cases, rois, upload, reduce_dims, reduce_dims_func, no_cache, plot, exclude_column_patterns, groupby, clusters, cluster_distinctions = (
         args.get('cases'),
         args.get('rois'),
         args.get('upload'),
@@ -179,10 +185,11 @@ def main(raw_args=None):
         args.get('plot'),
         args.get('exclude_column_patterns'),
         args.get('groupby'),
-        args.get('clusters')
+        args.get('clusters'),
+        args.get('cluster_distinctions')
     )
     process_feature_vectors(
-       cases, rois, upload, reduce_dims, reduce_dims_func, no_cache, plot, exclude_column_patterns, groupby, clusters
+       cases, rois, upload, reduce_dims, reduce_dims_func, no_cache, plot, exclude_column_patterns, groupby, clusters, cluster_distinctions,
     )
 
 

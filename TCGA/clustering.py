@@ -1,12 +1,19 @@
 import json
+import numpy
+import scipy.stats as stats
 
 from datetime import datetime
 from sklearn import cluster
 from sklearn.metrics import silhouette_score
 
+from .constants import COLUMN_NAMES, CLASS_PREFIX
+from .read_vectors import get_case_vector
+
 
 MAX_CLUSTERS = 5
 RANDOM_STATE = 0
+SIGNIFICANCE_LEVEL = 0.05
+N_CORRELATION_COLS = 5
 
 
 def get_optimal_clusters(data, group_name, clusters_file=None, use_cache=False):
@@ -55,3 +62,47 @@ def find_clusters(all_results, clusters_file=None, use_cache=False):
             use_cache=use_cache
         )
     return cluster_results
+
+
+def find_cluster_distinction_columns(case_name, clusters_file, groups=None, print_results=False):
+    distinction_columns = {}
+    clusters = None
+    with open(clusters_file) as f:
+        clusters = json.load(f)
+
+    if groups is None:
+        vector = get_case_vector(case_name)
+        class_cols = [c for c in COLUMN_NAMES if CLASS_PREFIX in c]
+        classes = [c.replace(CLASS_PREFIX, '') for c in vector[class_cols].idxmax(axis=1)]
+        vector = vector.assign(classification=classes)
+        groups = vector.groupby('classification')
+
+    for group_name, group in groups:
+        start = datetime.now()
+        labels = clusters.get(group_name)
+        columns = [c for c, d in group.dtypes.to_dict().items() if d == numpy.float64]
+        column_f_stats = {}
+        if labels is not None:
+            group = group.assign(cluster=labels)
+            cluster_groups = group.groupby('cluster')
+            for column_name in columns:
+                column_per_cluster = [
+                    cluster[column_name]
+                    for cluster_id, cluster in cluster_groups
+                ]
+                f_stat, p_val = stats.f_oneway(*column_per_cluster)
+                if p_val < SIGNIFICANCE_LEVEL:
+                    column_f_stats[column_name] = float(f_stat)
+            group_distinction_cols = dict(sorted(
+                column_f_stats.items(),
+                key=lambda item: item[1],
+                reverse=True
+            )[:N_CORRELATION_COLS])
+            distinction_columns[group_name] = group_distinction_cols
+
+            if print_results:
+                seconds = (datetime.now() - start).total_seconds()
+                print(f'Found cluster distinction columns for {group_name} in {seconds} seconds.')
+                for col_name, f_val in group_distinction_cols.items():
+                    print(f'\t{col_name}: {f_val}')
+    return distinction_columns
