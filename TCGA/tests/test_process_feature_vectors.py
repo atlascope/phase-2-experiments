@@ -7,7 +7,7 @@ BASE_COMMAND = ["python", "-m", "TCGA.process_feature_vectors"]
 
 def test_help():
     output = get_output(*BASE_COMMAND, "-h")
-    assert len(output) == 32
+    assert len(output) == 39
     assert output[0].startswith("usage:")
 
 
