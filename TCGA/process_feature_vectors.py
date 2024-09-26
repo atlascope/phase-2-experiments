@@ -1,6 +1,8 @@
 import argparse
 import getpass
 import re
+import json
+import pandas
 from pathlib import Path
 
 from matplotlib import colormaps
@@ -27,54 +29,86 @@ def process_feature_vectors(
         case_name = case.name.split('.')[0]
         if cases is None or case_name in cases:
             print(f'Evaluating {case_name}.')
-            vector = get_case_vector(case_name, rois=rois)
-
-            # create groups
-            groups = {'all': vector}.items()
-            if groupby == 'roi':
-                groups = vector.groupby('roiname')
-            if groupby == 'class':
-                class_cols = [c for c in COLUMN_NAMES if CLASS_PREFIX in c]
-                classes = [c.replace(CLASS_PREFIX, '') for c in vector[class_cols].idxmax(axis=1)]
-                vector = vector.assign(classification=classes)
-                groups = vector.groupby('classification')
-
-            # evaluate groups
+            vector = None
+            groups = None
             all_results = {}
-            for group_name, group in groups:
-                print(f'\tEvaluating group "{group_name}".')
-                group_copy = group.copy()
 
-                # remove any excluded columns
-                if exclude_column_patterns is not None:
+            # manage result files
+            case_results_folder = REDUCE_DIMS_RESULTS_FOLDER / reduce_dims_func / case_name
+            if not case_results_folder.exists():
+                case_results_folder.mkdir(parents=True, exist_ok=True)
+            group_records_file =  case_results_folder / 'all_groups.json'
+            group_records = {}
+            if group_records_file.exists():
+                with open(group_records_file) as f:
+                    try:
+                        group_records = json.load(f)
+                    except json.JSONDecodeError:
+                        pass
+
+            # avoid loading case vector if only using previous result files
+            if not (upload or no_cache):
+                group_names = group_records.get(groupby)
+                if group_names is not None:
+                    for group_name in group_names:
+                        group_result_file = case_results_folder / f'{group_name}.csv'
+                        if group_result_file.exists():
+                            group_result = pandas.read_csv(group_result_file, index_col=0)
+                            all_results[group_name] = group_result
+
+            if not len(all_results):
+                vector = get_case_vector(case_name, rois=rois)
+
+                # create groups
+                groups = {'all': vector}.items()
+                if groupby == 'roi':
+                    groups = vector.groupby('roiname')
+                if groupby == 'class':
+                    class_cols = [c for c in COLUMN_NAMES if CLASS_PREFIX in c]
+                    classes = [c.replace(CLASS_PREFIX, '') for c in vector[class_cols].idxmax(axis=1)]
+                    vector = vector.assign(classification=classes)
+                    groups = vector.groupby('classification')
+
+                # record groups
+                group_records[groupby] = list(groups.groups.keys())
+                with open(group_records_file, 'w') as f:
+                    json.dump(group_records, f)
+
+                # evaluate groups
+                for group_name, group in groups:
+                    print(f'\tEvaluating group "{group_name}".')
+                    group_copy = group.copy()
+
+                    # remove any excluded columns
+                    if exclude_column_patterns is not None:
+                        group_copy = group_copy.drop([
+                            c for c in COLUMN_NAMES if any(re.match(fr'{pattern}', c) for pattern in exclude_column_patterns)
+                        ], axis=1, errors='ignore')
+
+                    # clean and normalize data
                     group_copy = group_copy.drop([
-                        c for c in COLUMN_NAMES if any(re.match(fr'{pattern}', c) for pattern in exclude_column_patterns)
-                    ], axis=1, errors='ignore')
+                        c for c in group_copy.columns
+                        if str(group_copy[c].dtype) != 'float64'
+                    ], axis=1).fillna(-1)
+                    normalize(group_copy, axis=1, norm='l1')
 
-                # clean and normalize data
-                group_copy = group_copy.drop([
-                    c for c in group_copy.columns
-                    if str(group_copy[c].dtype) != 'float64'
-                ], axis=1).fillna(-1)
-                normalize(group_copy, axis=1, norm='l1')
+                    # get dimensionality reduction results
+                    result = None
+                    if reduce_dims:
+                        result_filepath = Path(REDUCE_DIMS_RESULTS_FOLDER, reduce_dims_func, case_name, f'{group_name}.csv')
+                        if reduce_dims_func == 'umap':
+                            result = umap(group_copy, result_filepath, use_cache=not no_cache)
+                        elif reduce_dims_func == 'tsne':
+                            result = tsne(group_copy, result_filepath, use_cache=not no_cache)
 
-                # get dimensionality reduction results
-                result = None
-                if reduce_dims:
-                    result_filepath = Path(REDUCE_DIMS_RESULTS_FOLDER, reduce_dims_func, case_name, f'{group_name}.json')
-                    if reduce_dims_func == 'umap':
-                        result = umap(group_copy, result_filepath, use_cache=not no_cache)
-                    elif reduce_dims_func == 'tsne':
-                        result = tsne(group_copy, result_filepath, use_cache=not no_cache)
+                    if result is not None:
+                        all_results[group_name] = result
 
-                if result is not None:
-                    all_results[group_name] = result
+                    annotation_filepath = Path(ANNOTATIONS_FOLDER, case_name, f'{group_name}.json')
+                    write_annotation(annotation_filepath, group, result)
 
-                annotation_filepath = Path(ANNOTATIONS_FOLDER, case_name, f'{group_name}.json')
-                write_annotation(annotation_filepath, group, result)
-
-                if upload:
-                    upload_annotation(case_name, annotation_filepath, username, password)
+                    if upload:
+                        upload_annotation(case_name, annotation_filepath, username, password)
 
             # show result plot
             if reduce_dims and plot:
