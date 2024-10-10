@@ -3,7 +3,7 @@ import os
 import warnings
 from datetime import datetime
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Optional
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -92,6 +92,7 @@ def tsne(
 def plot_results(
     results: Dict[str, pandas.DataFrame],
     title='Dimensionality Reduction Results',
+    cluster_results: Optional[Dict[str, list]] = None,
     show=True,
     save=True,
 ):
@@ -113,7 +114,8 @@ def plot_results(
                 result_title, result_data = result_items[i]
                 x = result_data['x']
                 y = result_data['y']
-                ax.scatter(x, y, s=2)
+                c = cluster_results.get(result_title, None) if cluster_results is not None else None
+                ax.scatter(x, y, c=c, s=2)
                 ax.set_title(result_title)
                 i += 1
     if not PLOTS_FOLDER.exists():
