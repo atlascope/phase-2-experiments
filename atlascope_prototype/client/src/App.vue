@@ -1,41 +1,71 @@
 <script lang="js">
-import geo from "geojs";
-import { defineComponent, onMounted, ref } from "vue";
-import { listImageItems, fetchImageTileInfo } from "./api";
+import { defineComponent, ref, watch } from "vue";
+import { VTreeview } from 'vuetify/labs/VTreeview';
+import VResizeDrawer from  '@wdns/vuetify-resize-drawer';
+import { listCollections, listFolders, listItems } from "./api";
 
 export default defineComponent({
+  components: {
+    VTreeview,
+    VResizeDrawer,
+  },
   setup() {
-    const images = ref([]);
-    const map = ref();
+    const treeData = ref([{
+      name: 'Girder Data',
+      _id: 'root',
+      _modelType: 'root',
+      children: []
+    }]);
+    const activeImage = ref();
 
-    function selectImage(images) {
-      if (images.length){
-        const image = images[0]
-        fetchImageTileInfo(image).then((tileInfo) => {
-          let params = geo.util.pixelCoordinateParams(
-            '#map',
-            tileInfo.sizeX,
-            tileInfo.sizeY,
-            tileInfo.tileWidth,
-            tileInfo.tileHeight
-          );
-          map.value = geo.map(params.map);
-          params.layer.url = `${image.apiUrl}/item/${image.id}/tiles/zxy/{z}/{x}/{y}`;
-          const imageLayer = map.value.createLayer('osm', params.layer);
-          return imageLayer;
+    function updateChildren(root, parent_id, children) {
+      children = children.map((child) => {
+        if (child._modelType !== 'item') {
+          child.children=[];
+        }
+        return child
+      })
+      if (root._id === parent_id) {
+        root.children = children;
+      } else {
+        root.children = root.children.map(
+          (child) => updateChildren(child, parent_id, children)
+        )
+      }
+      return root;
+    }
+
+    async function loadChildren(item) {
+      if (!item) return
+      let loadFunc = null;
+      if (item._modelType == 'root') {
+        loadFunc = () => listCollections()
+      }
+      else if (item._modelType == 'collection') {
+        loadFunc = () => listFolders(item._id)
+      }
+      else if (item._modelType == 'folder') {
+        loadFunc = () => listItems(item._id)
+      }
+      if (loadFunc) {
+        return loadFunc().then((data) => {
+          treeData.value = [updateChildren(
+            treeData.value[0],
+            item._id,
+            data
+          )]
         })
       }
     }
 
-    onMounted(() => {
-      listImageItems().then((data) => {
-        images.value = data
-      })
-    });
+    watch(activeImage, () => {
+      console.log(activeImage.value[0])
+    })
 
     return {
-      images,
-      selectImage,
+      treeData,
+      activeImage,
+      loadChildren,
     };
   },
 });
@@ -43,30 +73,36 @@ export default defineComponent({
 
 <template>
   <v-app>
-    <v-navigation-drawer permanent app>
-      <v-card-text v-if="!images.length">No images found.</v-card-text>
-      <v-list @update:selected="selectImage" :rounded="true">
-        <v-list-item
-          v-for="image in images"
-          :value="image"
-          :key="image.id"
-          :title="image.name"
-          v-tooltip="image.name"
-        >
-        </v-list-item>
-      </v-list>
-    </v-navigation-drawer>
+    <VResizeDrawer>
+      <v-treeview
+        v-model:activated="activeImage"
+        :items="treeData"
+        :load-children="loadChildren"
+        item-title="name"
+        item-value="_id"
+        density="compact"
+        open-on-click
+        activatable
+        transition
+        return-object
+      >
+      </v-treeview>
+    </VResizeDrawer>
     <v-main>
       <div id="map" style="height: 100%"></div>
     </v-main>
   </v-app>
 </template>
 
-<style scoped>
+<style>
 .main-area {
   position: absolute;
   top: 65px;
   height: calc(100% - 70px);
   width: 100%;
+}
+.v-list--slim .v-treeview-group.v-list-group {
+  /* decrease tree indent */
+  --prepend-width: 5px !important;
 }
 </style>

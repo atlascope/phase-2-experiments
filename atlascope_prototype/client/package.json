@@ -8,6 +8,8 @@
     "lint": "vue-cli-service lint"
   },
   "dependencies": {
+    "@mdi/font": "^7.4.47",
+    "@wdns/vuetify-resize-drawer": "^3.1.6",
     "axios": "^1.7.4",
     "core-js": "^3.8.3",
     "geojs": "^1.12.0",
