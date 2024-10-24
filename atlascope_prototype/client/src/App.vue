@@ -1,15 +1,16 @@
 <script lang="js">
 import "leaflet/dist/leaflet.css";
 
-import { defineComponent, ref, watch, computed } from "vue";
+import { defineComponent, ref, watch, computed, nextTick } from "vue";
 import VResizeDrawer from  '@wdns/vuetify-resize-drawer';
 import { VTreeview } from 'vuetify/labs/VTreeview';
 import { LMap, LTileLayer } from "@vue-leaflet/vue-leaflet";
 import { CRS } from 'leaflet';
 import LEllipse from "vue-leaflet-ellipse";
+import createScatterplot from 'regl-scatterplot';
 
 import { getImageTileInfo, getImageTileUrl, listCollections, listFolders, listItems } from "./api";
-import { metersPerPixel } from "./utils";
+import { metersPerPixel, normalizePoints } from "./utils";
 
 export default defineComponent({
   components: {
@@ -47,25 +48,8 @@ export default defineComponent({
     const showFileUpload = ref(false);
     const annotationFile = ref();
     const currentAnnotation = ref();
+    const openPanel = ref([]);
     const annotationColor = ref('#00ff00');
-    const elementListLength = ref(0);
-    const elementList = computed(() => {
-      if (ellipses.value) {
-        const uniqueEllipses = ellipses.value.filter(
-          (element, index) => ellipses.value.map((e) => e.id).indexOf(element.id) === index
-        )
-        const sortedBySelected = uniqueEllipses.toSorted((e1, e2) => {
-          if (selectedElements.value.includes(e1.id) && selectedElements.value.includes(e2.id)) return e1.id - e2.id
-          else if (selectedElements.value.includes(e1.id)) return -1
-          else if (selectedElements.value.includes(e2.id)) return 1
-          return e1.id - e2.id
-        })
-        return sortedBySelected.slice(0, elementListLength.value)
-      } else {
-        return []
-      }
-    });
-    const selectedElements = ref([]);
     const ellipses = computed(() => {
       if (currentAnnotation.value?.elements) {
         return currentAnnotation.value.elements.map((element) => {
@@ -85,9 +69,15 @@ export default defineComponent({
             {key: 'height', value: element.height},
             {key: 'rotation', value: element.rotation},
           ]
+          const dimReductionPoint = {
+            id,
+            x: element.user?.x,
+            y: element.user?.y,
+          }
           return {
             id,
             details,
+            dimReductionPoint,
             rotation: -element.rotation,
             position,
             radius,
@@ -99,6 +89,26 @@ export default defineComponent({
         return []
       }
     })
+    const elementListLength = ref(0);
+    const elementList = computed(() => {
+      if (ellipses.value) {
+        const uniqueEllipses = ellipses.value.filter(
+          (element, index) => ellipses.value.map((e) => e.id).indexOf(element.id) === index
+        )
+        const sortedBySelected = uniqueEllipses.toSorted((e1, e2) => {
+          if (selectedElements.value.includes(e1.id) && selectedElements.value.includes(e2.id)) return e1.id - e2.id
+          else if (selectedElements.value.includes(e1.id)) return -1
+          else if (selectedElements.value.includes(e2.id)) return 1
+          return e1.id - e2.id
+        })
+        return sortedBySelected.slice(0, elementListLength.value)
+      } else {
+        return []
+      }
+    });
+    const selectedElements = ref([]);
+    const normalizedPoints = ref();
+    const scatterplot = ref();
 
     // Functions
     function updateChildren(root, parent_id, children) {
@@ -197,7 +207,54 @@ export default defineComponent({
       if (selectedElements.value.includes(element.id)) {
         selectedElements.value = selectedElements.value.filter((v) => v !== element.id)
       } else {
-        selectedElements.value.push(element.id)
+        selectedElements.value = [
+          ...selectedElements.value, element.id
+        ]
+      }
+    }
+
+    function drawScatter() {
+      const canvas = document.getElementById('scatter-canvas')
+      if (canvas) {
+        const { width, height } = canvas.getBoundingClientRect();
+        scatterplot.value = createScatterplot({
+          canvas,
+          width,
+          height,
+          pointSize: 5,
+          // backgroundColor: [0, 0, 0, 0.1]
+        });
+        scatterplot.value.clear();
+        normalizedPoints.value = normalizePoints(ellipses.value.map((ellipse) => {
+          return ellipse.dimReductionPoint
+        }))
+        const drawPoints = normalizedPoints.value.map((p) => [
+          p.x, p.y,
+          selectedElements.value.length && selectedElements.value.includes(p.id) ? 1 : 0.2,
+        ])
+        const selectedIndexes = normalizedPoints.value.map((p, i) => {
+          if (selectedElements.value.includes(p.id)) return i
+          return undefined
+        }).filter((i) => i)
+        scatterplot.value.draw(drawPoints, {
+          select: selectedIndexes,
+        });
+        scatterplot.value.set({
+          opacityBy: 'valueA',
+          pointColor: annotationColor.value,
+          pointSize: 6,
+        })
+        scatterplot.value.zoomToArea(
+          { x: 0, y: 0, width: 2, height: 2 },
+          { transition: true }
+        );
+        scatterplot.value.subscribe('select', ({ points }) => {
+          // regl-scatterplot returns point indexes
+          selectedElements.value = normalizedPoints.value.map((p, i) => {
+            if (points.includes(i)) return p.id
+            return undefined
+          }).filter((id) => id);
+        })
       }
     }
 
@@ -219,6 +276,23 @@ export default defineComponent({
       resetView();
     })
 
+    watch(openPanel, () => {
+      if (openPanel.value === 'scatter') {
+        nextTick().then(drawScatter)
+      }
+    })
+
+    watch(selectedElements, () => {
+      if (scatterplot.value) {
+        // regl-scatterplot requires point indexes
+        const selectedIndexes = normalizedPoints.value.map((p, i) => {
+          if (selectedElements.value.includes(p.id)) return i
+          return undefined
+        }).filter((i) => i)
+        scatterplot.value.select(selectedIndexes, {preventEvent: true})
+      }
+    })
+
     return {
       treeData,
       openParents,
@@ -233,6 +307,7 @@ export default defineComponent({
       annotationFile,
       submitAnnotationFile,
       currentAnnotation,
+      openPanel,
       annotationColor,
       elementList,
       selectedElements,
@@ -248,7 +323,7 @@ export default defineComponent({
 
 <template>
   <v-app>
-    <VResizeDrawer>
+    <VResizeDrawer name="left">
       <v-treeview
         v-model:opened="openParents"
         v-model:activated="activeImage"
@@ -301,7 +376,6 @@ export default defineComponent({
           :tilt="ellipse.rotation"
           :opacity="ellipse.opacity"
           :color="annotationColor"
-          :visible="zoom > 6"
           @click="(event) => selectElement(ellipse, event)"
         />
       </l-map>
@@ -309,10 +383,10 @@ export default defineComponent({
         Select an Image from Girder to begin.
       </v-card-subtitle>
     </v-main>
-    <VResizeDrawer v-if="currentAnnotation" location="right">
+    <VResizeDrawer v-if="currentAnnotation" location="right" name="right">
       <v-card-title class="pa-3">Annotation Options</v-card-title>
-      <v-expansion-panels class="pl-6 pr-3">
-        <v-expansion-panel>
+      <v-expansion-panels v-model="openPanel" class="pl-6 pr-3">
+        <v-expansion-panel value="elements">
           <v-expansion-panel-title>
             {{ currentAnnotation.elements.length }} annotation elements
           </v-expansion-panel-title>
@@ -359,7 +433,7 @@ export default defineComponent({
             </v-infinite-scroll>
           </v-expansion-panel-text>
         </v-expansion-panel>
-        <v-expansion-panel>
+        <v-expansion-panel value="color">
           <v-expansion-panel-title>
             Color
             <v-avatar
@@ -370,6 +444,14 @@ export default defineComponent({
           </v-expansion-panel-title>
           <v-expansion-panel-text>
             <v-color-picker v-model="annotationColor"></v-color-picker>
+          </v-expansion-panel-text>
+        </v-expansion-panel>
+        <v-expansion-panel
+          title="Dimensionality Reduction Results"
+          value="scatter"
+        >
+          <v-expansion-panel-text>
+            <canvas id="scatter-canvas"></canvas>
           </v-expansion-panel-text>
         </v-expansion-panel>
       </v-expansion-panels>
@@ -415,6 +497,10 @@ export default defineComponent({
   position: absolute;
   top: 10px;
   right: 50px;
+}
+#scatter-canvas {
+  width: 100%;
+  height: calc(100vh - 250px);
 }
 .v-list--slim .v-treeview-group.v-list-group {
   /* decrease tree indent */
