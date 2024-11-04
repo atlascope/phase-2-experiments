@@ -1,11 +1,13 @@
-// from https://stackoverflow.com/a/30773300
-export function metersPerPixel(latitude, zoomLevel) {
-  var earthCircumference = 40075017;
-  var latitudeRadians = latitude * (Math.PI / 180);
-  return (
-    (earthCircumference * Math.cos(latitudeRadians)) /
-    Math.pow(2, zoomLevel + 8)
-  );
+export function getQuadCoords(element) {
+  const xRadius = element.width / 2;
+  const yRadius = element.height / 2;
+  return [
+    [element.center[0] - xRadius, element.center[1] - yRadius],
+    [element.center[0] + xRadius, element.center[1] - yRadius],
+    [element.center[0] + xRadius, element.center[1] + yRadius],
+    [element.center[0] - xRadius, element.center[1] + yRadius],
+    [element.center[0] - xRadius, element.center[1] - yRadius],
+  ].map((vertex) => ({ x: vertex[0], y: vertex[1] }));
 }
 
 // regl-scatterplot requires points to be normalized for performance

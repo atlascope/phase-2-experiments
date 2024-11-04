@@ -1,26 +1,30 @@
 <script lang="js">
-import "leaflet/dist/leaflet.css";
-
 import { defineComponent, ref, watch, computed, nextTick } from "vue";
 import VResizeDrawer from  '@wdns/vuetify-resize-drawer';
 import { VTreeview } from 'vuetify/labs/VTreeview';
-import { LMap, LTileLayer } from "@vue-leaflet/vue-leaflet";
-import { CRS } from 'leaflet';
-import LEllipse from "vue-leaflet-ellipse";
+import geo from 'geojs';
 import createScatterplot from 'regl-scatterplot';
 
-import { getImageTileInfo, getImageTileUrl, listCollections, listFolders, listItems } from "./api";
-import { metersPerPixel, normalizePoints } from "./utils";
+
+import {
+  getImageTileInfo,
+  getImageTileUrl,
+  listCollections,
+  listFolders,
+  listItems,
+  listAnnotations,
+  getAnnotationContents,
+} from "./api";
+import { getQuadCoords, normalizePoints } from "./utils";
 
 export default defineComponent({
   components: {
     VResizeDrawer,
     VTreeview,
-    LMap,
-    LTileLayer,
-    LEllipse,
   },
   setup() {
+    const loading = ref(false);
+
     // Data Tree
     const treeData = ref([{
       name: 'Girder Data',
@@ -30,60 +34,48 @@ export default defineComponent({
     }]);
     const openParents = ref([]);
     const activeImage = ref();
-    const activeImageURL = computed(() => {
-      if (activeImage.value?.length === 1) {
-        return getImageTileUrl(activeImage.value[0])
-      }
-      return undefined;
-    })
 
     // Map
     const map = ref(null);
-    const crs = CRS.Simple;
     const center = ref();
     const zoom = ref(2);
     const maxZoom = ref();
 
     // Annotations
+    const availableAnnotations = ref([]);
+    const annotationLayer = ref();
     const showEllipses = ref(true);
     const showFileUpload = ref(false);
     const annotationFile = ref();
     const currentAnnotation = ref();
     const openPanel = ref([]);
     const annotationColor = ref('#00ff00');
+    const selectedColor = ref('#0000ff');
     const ellipses = computed(() => {
       if (currentAnnotation.value?.elements) {
         return currentAnnotation.value.elements.map((element) => {
           const id = element.user?.id || -1;
-          const position = crs.pointToLatLng(
-            {x: element.center[0], y: element.center[1]},
-            maxZoom.value,
-          )
-          const metersMultiplier = metersPerPixel(position.lat, maxZoom.value)
-          const radius = [
-            element.width / 2 * metersMultiplier,
-            element.height / 2 * metersMultiplier,
-          ]
-          const details = [
-            {key: 'center', value: element.center},
-            {key: 'width', value: element.width},
-            {key: 'height', value: element.height},
-            {key: 'rotation', value: element.rotation},
-          ]
-          const dimReductionPoint = {
-            id,
-            x: element.user?.x,
-            y: element.user?.y,
-          }
           return {
             id,
-            details,
-            dimReductionPoint,
-            rotation: -element.rotation,
-            position,
-            radius,
-            title: `Element ${element.user?.id}`,
-            opacity: selectedElements.value.length && selectedElements.value.includes(id) ? 1 : 0.2,
+            title: `Element ${id}`,
+            details: [
+              {key: 'center', value: element.center},
+              {key: 'width', value: element.width},
+              {key: 'height', value: element.height},
+              {key: 'rotation', value: element.rotation},
+            ],
+            dimReductionPoint: {
+              id,
+              x: element.user?.x,
+              y: element.user?.y,
+            },
+            center: {
+              x: element.center[0],
+              y: element.center[1],
+            },
+            coords: getQuadCoords(element),
+            opacity: selectedElements.value.includes(id) ? 1 : 0.2,
+            color: selectedElements.value.includes(id) ? selectedColor.value : annotationColor.value
           }
         }).toSorted((e1, e2) => e1.id - e2.id)
       } else {
@@ -154,6 +146,7 @@ export default defineComponent({
 
     function submitAnnotationFile() {
       if (annotationFile.value) {
+        loading.value = true;
         elementListLength.value = 0
         selectedElements.value = [];
         currentAnnotation.value = undefined;
@@ -161,35 +154,102 @@ export default defineComponent({
         reader.onload = (event) => {
           const contents = event.target.result;
           if (contents) {
-            currentAnnotation.value = JSON.parse(contents);
+            currentAnnotation.value = {
+              _id: undefined,
+              title: annotationFile.value.name,
+              subtitle: 'Uploaded file; not persistent in Girder',
+              elements: JSON.parse(contents).elements
+            }
+            availableAnnotations.value.push(currentAnnotation.value)
             annotationFile.value = undefined;
             showFileUpload.value = false;
+            loading.value = false;
           }
         }
         reader.readAsText(annotationFile.value)
       }
     }
 
-    async function resetView() {
+    function initView() {
+      loading.value = true;
       center.value = undefined;
       maxZoom.value = undefined;
       zoom.value = undefined;
+      map.value = undefined;
+      annotationLayer.value = undefined;
       if (activeImage.value?.length === 1) {
-        getImageTileInfo(activeImage.value[0]).then((info) => {
-          zoom.value = 2;
+        let image = activeImage.value[0]
+        listAnnotations(image._id).then((annotations) => {
+          availableAnnotations.value = annotations.map((a) => {
+            return {
+              _id: a._id,
+              title: a.annotation.name,
+              subtitle: a.annotation.description,
+              elements: [],
+            }
+          });
+        })
+        getImageTileInfo(image).then((info) => {
           maxZoom.value = info.levels - 1;
-          const maxCoord = crs.pointToLatLng(
-            {x: info.sizeX, y: info.sizeY},
-            maxZoom.value,
-          )
-          center.value = [
-            maxCoord.lat / 2, maxCoord.lng / 2
-          ]
+          let params = geo.util.pixelCoordinateParams(
+            '#map',
+            info.sizeX,
+            info.sizeY,
+            info.tileWidth,
+            info.tileHeight
+          );
+          map.value = geo.map(params.map);
+          center.value = map.value.center();
+          zoom.value = map.value.zoom();
+          params.layer.url = getImageTileUrl(image);
+          map.value.createLayer('osm', params.layer);
+          annotationLayer.value = map.value.createLayer('feature', {
+            features: ['line']
+          });
+          map.value.draw();
+          // loading.value = false;
         })
       }
     }
 
+    function resetView() {
+      if (map.value && center.value && zoom.value) {
+        map.value.zoom(zoom.value).center(center.value)
+      }
+    }
+
+    function drawEllipses() {
+      if (!annotationLayer.value) return;
+      loading.value = true;
+      annotationLayer.value.clear()
+      if (ellipses.value.length && showEllipses.value) {
+        annotationLayer.value.createFeature('line')
+        .data(ellipses.value)
+        .line((element) => element.coords)
+        .style({
+          strokeWidth: 4,
+          closed: true,
+          strokeColor:  (_vertex, _vIndex, item) => item.color,
+          strokeOpacity: (_vertex, _vIndex, item) => item.opacity,
+        })
+        .geoOn(geo.event.feature.mousedown, (e) => {
+          selectElement(e.data, e.sourceEvent)
+        })
+        .draw()
+      } else {
+        annotationLayer.value.draw()
+      }
+      loading.value = false;
+    }
+
+    function flyToElement(element) {
+      if (map.value && element.center && maxZoom.value) {
+        map.value.zoom(maxZoom.value).center(element.center);
+      }
+    }
+
     async function expandElementList({ done }) {
+      // implementation complies with Vuetify's Infinite Scroll component API
       if (elementList.value.length === currentAnnotation.value?.elements.length) {
         done('empty');
       } else {
@@ -198,13 +258,8 @@ export default defineComponent({
       }
     }
 
-    function flyToElement(element) {
-      center.value = element.position;
-      zoom.value = maxZoom.value;
-    }
-
     function selectElement(element, event) {
-      if (!event.originalEvent.shiftKey) selectedElements.value = []
+      if (!event.modifiers.shift) selectedElements.value = []
       if (selectedElements.value.includes(element.id)) {
         selectedElements.value = selectedElements.value.filter((v) => v !== element.id)
       } else {
@@ -223,7 +278,6 @@ export default defineComponent({
           width,
           height,
           pointSize: 5,
-          // backgroundColor: [0, 0, 0, 0.1]
         });
         scatterplot.value.clear();
         normalizedPoints.value = normalizePoints(ellipses.value.map((ellipse) => {
@@ -274,7 +328,7 @@ export default defineComponent({
       currentAnnotation.value = undefined;
       elementListLength.value = 0;
       selectedElements.value = [];
-      resetView();
+      initView();
     })
 
     watch(openPanel, () => {
@@ -294,16 +348,29 @@ export default defineComponent({
       }
     })
 
+    watch(currentAnnotation, () => {
+      if (currentAnnotation.value?._id) {
+        loading.value = true;
+        getAnnotationContents(currentAnnotation.value._id).then((contents) => {
+          currentAnnotation.value.elements = contents.annotation.elements
+          loading.value = false;
+        })
+      }
+      if (openPanel.value === 'scatter') {
+        nextTick().then(drawScatter)
+      }
+    })
+
+    watch(ellipses, drawEllipses)
+
+    watch(showEllipses, drawEllipses)
+
     return {
+      loading,
       treeData,
       openParents,
       activeImage,
-      activeImageURL,
-      map,
-      crs,
-      center,
-      zoom,
-      maxZoom,
+      availableAnnotations,
       showFileUpload,
       showEllipses,
       annotationFile,
@@ -311,10 +378,10 @@ export default defineComponent({
       currentAnnotation,
       openPanel,
       annotationColor,
+      selectedColor,
       elementList,
       selectedElements,
       expandElementList,
-      ellipses,
       resetView,
       flyToElement,
       selectElement,
@@ -325,6 +392,7 @@ export default defineComponent({
 
 <template>
   <v-app>
+    <v-progress-linear v-if="loading" indeterminate />
     <VResizeDrawer name="left">
       <v-treeview
         v-model:opened="openParents"
@@ -341,61 +409,50 @@ export default defineComponent({
       </v-treeview>
     </VResizeDrawer>
     <v-main style="width: 100%; height: 100%">
-      <l-map
-        v-if="activeImage && center"
-        ref="map"
-        :crs="crs"
-        :zoom="zoom"
-        :center="center"
-        :zoomAnimation="true"
-      >
-        <v-btn
-          icon="mdi-arrow-expand-all"
-          class="map-button"
-          style="left: 60px"
-          @click="resetView"
-        ></v-btn>
-        <v-btn
-          icon="mdi-upload"
-          class="map-button"
-          style="right: 10px"
-          @click="showFileUpload = true"
-        ></v-btn>
-        <l-tile-layer
-          v-if="maxZoom"
-          :url="activeImageURL"
-          :noWrap="true"
-          :maxZoom="maxZoom"
-          layer-type="base"
-          name="ImageLayer"
-        ></l-tile-layer>
-        <div v-if="showEllipses">
-          <l-ellipse
-            v-for="ellipse in ellipses"
-            :key="ellipse.id"
-            :name="`${ellipse.id}`"
-            :lat-lng="ellipse.position"
-            :radius="ellipse.radius"
-            :tilt="ellipse.rotation"
-            :opacity="ellipse.opacity"
-            :color="annotationColor"
-            @click="(event) => selectElement(ellipse, event)"
-          />
-        </div>
-      </l-map>
-      <v-card-subtitle v-else class="pa-5">
+      <v-card-subtitle v-if="!activeImage" class="pa-5">
         Select an Image from Girder to begin.
       </v-card-subtitle>
+      <div id="map" style="height: 100%">
+        <v-btn
+          v-if="activeImage"
+          icon="mdi-arrow-expand-all"
+          class="map-button"
+          style="left: 10px"
+          @click="resetView"
+        ></v-btn>
+      </div>
     </v-main>
-    <VResizeDrawer v-if="currentAnnotation" location="right" name="right">
+    <VResizeDrawer
+      v-if="availableAnnotations.length"
+      location="right"
+      name="right"
+    >
       <v-card-title class="pa-3">Annotation Options</v-card-title>
+      <v-select
+        v-model="currentAnnotation"
+        :items="availableAnnotations"
+        label="Current Annotation"
+        item-props
+        return-object
+        hide-details
+        class="pa-3"
+      >
+        <template v-slot:append>
+          <v-icon icon="mdi-upload" @click="showFileUpload = true"></v-icon>
+        </template>
+      </v-select>
       <v-switch
+        v-if="currentAnnotation"
         v-model="showEllipses"
         label="Show Ellipses"
-        class="py-0 px-3"
+        class="my-0 px-6"
         hide-details
       />
-      <v-expansion-panels v-model="openPanel" class="pl-6 pr-3">
+      <v-expansion-panels
+        v-if="currentAnnotation"
+        v-model="openPanel"
+        class="pl-6 pr-3"
+      >
         <v-expansion-panel value="elements">
           <v-expansion-panel-title>
             {{ currentAnnotation.elements.length }} annotation elements
@@ -415,7 +472,7 @@ export default defineComponent({
                       class="pa-0"
                       :color="
                         selectedElements.includes(element.id)
-                          ? annotationColor + '33'
+                          ? selectedColor + '11'
                           : '#ffffff00'
                       "
                     >
@@ -485,6 +542,7 @@ export default defineComponent({
           <v-btn @click="showFileUpload = false" color="red">Cancel</v-btn>
           <v-btn @click="submitAnnotationFile">Submit</v-btn>
         </v-card-actions>
+        <v-progress-linear v-if="loading" indeterminate />
       </v-card>
     </v-dialog>
   </v-app>
