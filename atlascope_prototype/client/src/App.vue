@@ -45,6 +45,7 @@ export default defineComponent({
     const maxZoom = ref();
 
     // Annotations
+    const showEllipses = ref(true);
     const showFileUpload = ref(false);
     const annotationFile = ref();
     const currentAnnotation = ref();
@@ -304,6 +305,7 @@ export default defineComponent({
       zoom,
       maxZoom,
       showFileUpload,
+      showEllipses,
       annotationFile,
       submitAnnotationFile,
       currentAnnotation,
@@ -367,17 +369,19 @@ export default defineComponent({
           layer-type="base"
           name="ImageLayer"
         ></l-tile-layer>
-        <l-ellipse
-          v-for="ellipse in ellipses"
-          :key="ellipse.id"
-          :name="`${ellipse.id}`"
-          :lat-lng="ellipse.position"
-          :radius="ellipse.radius"
-          :tilt="ellipse.rotation"
-          :opacity="ellipse.opacity"
-          :color="annotationColor"
-          @click="(event) => selectElement(ellipse, event)"
-        />
+        <div v-if="showEllipses">
+          <l-ellipse
+            v-for="ellipse in ellipses"
+            :key="ellipse.id"
+            :name="`${ellipse.id}`"
+            :lat-lng="ellipse.position"
+            :radius="ellipse.radius"
+            :tilt="ellipse.rotation"
+            :opacity="ellipse.opacity"
+            :color="annotationColor"
+            @click="(event) => selectElement(ellipse, event)"
+          />
+        </div>
       </l-map>
       <v-card-subtitle v-else class="pa-5">
         Select an Image from Girder to begin.
@@ -385,6 +389,12 @@ export default defineComponent({
     </v-main>
     <VResizeDrawer v-if="currentAnnotation" location="right" name="right">
       <v-card-title class="pa-3">Annotation Options</v-card-title>
+      <v-switch
+        v-model="showEllipses"
+        label="Show Ellipses"
+        class="py-0 px-3"
+        hide-details
+      />
       <v-expansion-panels v-model="openPanel" class="pl-6 pr-3">
         <v-expansion-panel value="elements">
           <v-expansion-panel-title>
