@@ -15,7 +15,7 @@ import {
   listAnnotations,
   getAnnotationContents,
 } from "./api";
-import { getQuadCoords, normalizePoints } from "./utils";
+import { normalizePoints } from "./utils";
 
 export default defineComponent({
   components: {
@@ -52,37 +52,7 @@ export default defineComponent({
     const annotationColor = ref('#00ff00');
     const selectedColor = ref('#0000ff');
     const numVisible = ref(0);
-    const ellipses = computed(() => {
-      if (currentAnnotation.value?.elements) {
-        return currentAnnotation.value.elements.map((element) => {
-          const id = element.user?.id || -1;
-          return {
-            id,
-            title: `Element ${id}`,
-            details: [
-              {key: 'center', value: element.center},
-              {key: 'width', value: element.width},
-              {key: 'height', value: element.height},
-              {key: 'rotation', value: element.rotation},
-            ],
-            dimReductionPoint: {
-              id,
-              x: element.user?.x,
-              y: element.user?.y,
-            },
-            center: {
-              x: element.center[0],
-              y: element.center[1],
-            },
-            coords: getQuadCoords(element),
-            opacity: selectedElements.value.includes(id) ? 1 : 0.2,
-            color: selectedElements.value.includes(id) ? selectedColor.value : annotationColor.value
-          }
-        }).toSorted((e1, e2) => e1.id - e2.id)
-      } else {
-        return []
-      }
-    })
+    const ellipses = ref([]);
     const elementListLength = ref(0);
     const elementList = computed(() => {
       if (ellipses.value) {
@@ -207,7 +177,7 @@ export default defineComponent({
           params.layer.url = getImageTileUrl(image);
           map.value.createLayer('osm', params.layer);
           annotationLayer.value = map.value.createLayer('feature', {
-            features: ['line']
+            features: ['marker']
           });
           map.value.draw();
           // loading.value = false;
@@ -221,19 +191,60 @@ export default defineComponent({
       }
     }
 
+    function updateEllipses() {
+      let elements = currentAnnotation.value?.elements;
+      if (elements) {
+        ellipses.value = elements.map((element) => {
+          const id = element.user?.id || -1;
+          return {
+            id,
+            title: `Element ${id}`,
+            details: [
+              {key: 'center', value: element.center},
+              {key: 'width', value: element.width},
+              {key: 'height', value: element.height},
+              {key: 'rotation', value: element.rotation},
+            ],
+            dimReductionPoint: {
+              id,
+              x: element.user?.x,
+              y: element.user?.y,
+            },
+            x: element.center[0],
+            y: element.center[1],
+            width: element.width,
+            height: element.height,
+            radius: Math.max(element.width, element.height),
+            rotation: element.width > element.height ? element.rotation : element.rotation + Math.PI / 2,
+            aspectRatio: Math.min(element.width, element.height) / Math.max(element.width, element.height),
+            opacity: selectedElements.value.includes(id) ? 1 : 0.2,
+            color: selectedElements.value.includes(id) ? selectedColor.value : annotationColor.value
+          }
+        }).toSorted((e1, e2) => e1.id - e2.id)
+      } else {
+        ellipses.value = []
+      }
+    }
+
     function drawEllipses() {
       if (!annotationLayer.value) return;
       loading.value = true;
       annotationLayer.value.clear()
       if (ellipses.value.length && showEllipses.value) {
-        annotationLayer.value.createFeature('line')
+        annotationLayer.value.createFeature('marker')
         .data(ellipses.value)
-        .line((element) => element.coords)
         .style({
+          strokeColor:  (item) => item.color,
+          radius: (item) => item.width / (2 ** (maxZoom.value + 1)),
+          rotation: (item) => item.rotation,
+          symbolValue: (item) => item.aspectRatio,
+          symbol: geo.markerFeature.symbols.ellipse,
+          scaleWithZoom: geo.markerFeature.scaleMode.fill,
+          rotateWithMap: true,
           strokeWidth: 4,
-          closed: true,
-          strokeColor:  (_vertex, _vIndex, item) => item.color,
+          strokeOffset: 1,
           strokeOpacity: 1,
+          fillOpacity: 0,
         })
         .geoOn(geo.event.feature.mousedown, (e) => {
           selectElement(e.data, e.sourceEvent)
@@ -246,8 +257,8 @@ export default defineComponent({
     }
 
     function flyToElement(element) {
-      if (map.value && element.center && maxZoom.value) {
-        map.value.zoom(maxZoom.value).center(element.center);
+      if (map.value && element.x !== undefined && maxZoom.value) {
+        map.value.zoom(maxZoom.value).center({x: element.x, y: element.y});
       }
     }
 
@@ -256,10 +267,10 @@ export default defineComponent({
         const {left, top, right, bottom} = map.value.camera().bounds
         numVisible.value = ellipses.value.filter((ellipse) => {
           return (
-            ellipse.center.x > left &&
-            ellipse.center.x < right &&
-            ellipse.center.y > -top &&
-            ellipse.center.y < -bottom
+            ellipse.x > left &&
+            ellipse.x < right &&
+            ellipse.y > -top &&
+            ellipse.y < -bottom
           )
         }).length
       } else {
@@ -367,6 +378,7 @@ export default defineComponent({
         }).filter((i) => i)
         scatterplot.value.select(selectedIndexes, {preventEvent: true})
       }
+      updateEllipses()
     })
 
     watch(currentAnnotation, () => {
@@ -375,6 +387,7 @@ export default defineComponent({
         getAnnotationContents(currentAnnotation.value._id).then((contents) => {
           currentAnnotation.value.elements = contents.annotation.elements
           loading.value = false;
+          updateEllipses();
           updateNumVisible();
         })
       }

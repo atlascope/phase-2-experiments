@@ -1,15 +1,3 @@
-export function getQuadCoords(element) {
-  const xRadius = element.width / 2;
-  const yRadius = element.height / 2;
-  return [
-    [element.center[0] - xRadius, element.center[1] - yRadius],
-    [element.center[0] + xRadius, element.center[1] - yRadius],
-    [element.center[0] + xRadius, element.center[1] + yRadius],
-    [element.center[0] - xRadius, element.center[1] + yRadius],
-    [element.center[0] - xRadius, element.center[1] - yRadius],
-  ].map((vertex) => ({ x: vertex[0], y: vertex[1] }));
-}
-
 // regl-scatterplot requires points to be normalized for performance
 export function normalizePoints(points) {
   const xMin = Math.min(...points.map((p) => p.x));
