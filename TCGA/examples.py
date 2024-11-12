@@ -36,18 +36,16 @@ def download_examples(cases):
 
 def upload_images(cases, username=None, password=None):
     target_server = CONF.get('target_server', {})
-    atlascope_server = CONF.get('atlascope_server', {})
     girder_api_root = target_server.get('api_root')
-    atlascope_api_root = atlascope_server.get('api_root')
 
     if username is None:
         username = input('Girder Username: ')
     if password is None:
         password = getpass.getpass('Girder Password: ')
 
-    if not girder_api_root or not atlascope_api_root:
+    if not girder_api_root:
         raise ValueError(
-            "Configuration file must specify target_server.api_root and atlascope_server.api_root"
+            "Configuration file must specify target_server.api_root"
         )
 
     print(f'Uploading images to {girder_api_root}...')
@@ -89,20 +87,8 @@ def upload_images(cases, username=None, password=None):
                         if not current:
                             file_obj = client.uploadFileToItem(item_id, str(image))
 
-                        response = requests.post(f'{atlascope_api_root}images/', json=dict(
-                            imageId=item_id,
-                            imageName=case.name,
-                            apiURL=girder_api_root,
-                        ))
-                        if response.status_code == 200:
-                            print(f'Recorded ImageItem {case.name} in Atlascope.')
-
     # create large images for all items in folder
     client.put(f'/large_image/folder/{folder.get("_id")}/tiles?recurse=true')
-
-    # fetch list of Atlascope image records
-    atl_images = requests.get(f'{atlascope_api_root}images/').json()
-    print(f'Atlascope server has {len(atl_images)} images.')
 
     print(f'Completed upload in {datetime.now() - start} seconds.')
 

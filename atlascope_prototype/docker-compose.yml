@@ -1,21 +1,21 @@
 services:
   # server and db must be on host network so API calls can go out to target girder instances
-  db:
-    image: pgvector/pgvector:pg16
-    env_file: ./docker/db.env
-    volumes:
-      - ./docker/init.sql:/docker-entrypoint-initdb.d/init.sql
-    network_mode: host
-  server:
-    build:
-      context: .
-      dockerfile: ./docker/server.Dockerfile
-    command: ["uvicorn", "server.api:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
-    volumes:
-      - ./server:/atlascope/server/
-    environment:
-      - DB_URL=postgresql://admin:adminpass@localhost:5432/atlascope
-    network_mode: host
+  # db:
+  #   image: pgvector/pgvector:pg16
+  #   env_file: ./docker/db.env
+  #   volumes:
+  #     - ./docker/init.sql:/docker-entrypoint-initdb.d/init.sql
+  #   network_mode: host
+  # server:
+  #   build:
+  #     context: .
+  #     dockerfile: ./docker/server.Dockerfile
+  #   command: ["uvicorn", "server.api:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+  #   volumes:
+  #     - ./server:/atlascope/server/
+  #   environment:
+  #     - DB_URL=postgresql://admin:adminpass@localhost:5432/atlascope
+  #   network_mode: host
   client:
     build:
       context: .
@@ -24,7 +24,7 @@ services:
     volumes:
       - ./client:/atlascope/client/
     environment:
-      - VUE_APP_API_ROOT=http://localhost:8000
+      - VUE_APP_API_ROOT=http://localhost:3000/api/v1
     ports:
       - 8080:8080
   mongodb:

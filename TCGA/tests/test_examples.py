@@ -27,8 +27,6 @@ def test_case_upload():
     expected_output = [
         'Uploading images to http://localhost:3000/api/v1/...',
         'Uploading image for test.',
-        'Recorded ImageItem test in Atlascope.',
-        'Atlascope server has 1 images.',
         'Completed upload in ([\d:.]*) seconds.'
     ]
     compare_outputs(output, expected_output)

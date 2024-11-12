@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 from typing import Optional
 
+import girder_client
 import pandas
 
 from .constants import CONF
@@ -11,6 +12,7 @@ def write_annotation(
     filepath: Path,
     vector: pandas.DataFrame,
     meta_vector: Optional[pandas.DataFrame],
+    name: str = 'TCGA Nuclei'
 ):
     features = []
     if not filepath.parent.exists():
@@ -43,10 +45,16 @@ def write_annotation(
 
             color = '#00FF00'
             meta = dict(
-                id=feature['Identifier.ObjectCode']
+                # ObjectCode is not unique; use index instead
+                # id=feature['Identifier.ObjectCode']
+                id=index
             )
             if meta_vector is not None:
-                meta.update(meta_vector.loc[index].to_dict())
+                metadata = {
+                    k: v if not isinstance(v, dict) else next(iter(v.values()))
+                    for k, v in meta_vector.loc[index].to_dict().items()
+                }
+                meta.update(metadata)
 
             features.append(dict(
                 type='ellipse',
@@ -61,7 +69,7 @@ def write_annotation(
             ))
     # export case_features to annotation file
     annotation = dict(
-        name="TCGA Nuclei",
+        name=name,
         description="Interpreted from feature vectors",
         display=dict(
             visible=True,
@@ -72,11 +80,10 @@ def write_annotation(
         json.dump(annotation, f)
 
 
-def upload_annotation(
+def clear_annotations(
     case_name: str,
-    filepath: Path,
-    username:str,
-    password:str
+    username: str,
+    password: str
 ):
     target_server = CONF.get('target_server', {})
     api_root = target_server.get('api_root')
@@ -89,6 +96,7 @@ def upload_annotation(
 
     client = girder_client.GirderClient(apiUrl=api_root)
     client.authenticate(username, password)
+
     for item in client.listItem(folder_id, case_name):
         for old_annotation in client.get(
             'annotation',
@@ -98,6 +106,28 @@ def upload_annotation(
             client.delete(
                 f'annotation/{old_id}',
             )
+
+
+def upload_annotation(
+    case_name: str,
+    filepath: Path,
+    username: str,
+    password: str
+):
+    target_server = CONF.get('target_server', {})
+    api_root = target_server.get('api_root')
+    folder_id = target_server.get('folder_id')
+
+    if not api_root or not folder_id:
+        raise ValueError(
+            "Configuration file must specify target_server.api_root and target_server.folder_id"
+        )
+
+    client = girder_client.GirderClient(apiUrl=api_root)
+    client.authenticate(username, password)
+    with open(filepath) as f:
+        annotation_contents = json.load(f)
+    for item in client.listItem(folder_id, case_name):
         client.post(
             'annotation',
             parameters=dict(itemId=item['_id']),

@@ -1,12 +1,10 @@
 {
     "target_server": {
-        "api_root": "http://localhost:3000/api/v1/"
+        "api_root": "http://localhost:3000/api/v1/",
+        "folder_id": "66df605df34d0d15400600c5"
     },
     "sample_data_server": {
         "api_root": "https://data.kitware.com/api/v1/",
         "folder_id": "66a14ec45d2551c516b1d5d7"
-    },
-    "atlascope_server": {
-        "api_root": "http://localhost:8000/"
     }
 }

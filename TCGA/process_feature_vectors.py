@@ -8,7 +8,7 @@ from pathlib import Path
 from matplotlib import colormaps
 from sklearn.preprocessing import normalize
 
-from .annotations import upload_annotation, write_annotation
+from .annotations import upload_annotation, clear_annotations, write_annotation
 from .constants import (ANNOTATIONS_FOLDER, CLASS_PREFIX, COLUMN_NAMES,
                         DOWNLOADS_FOLDER, REDUCE_DIMS_RESULTS_FOLDER)
 from .read_vectors import get_case_vector
@@ -56,6 +56,10 @@ def process_feature_vectors(
                         if group_result_file.exists():
                             group_result = pandas.read_csv(group_result_file, index_col=0)
                             all_results[group_name] = group_result
+
+            # clear annotations if uploading new ones
+            if upload:
+                clear_annotations(case_name, username, password)
 
             if not len(all_results):
                 vector = get_case_vector(case_name, rois=rois)
@@ -107,7 +111,7 @@ def process_feature_vectors(
                         all_results[group_name] = result
 
                     annotation_filepath = Path(ANNOTATIONS_FOLDER, case_name, f'{group_name}.json')
-                    write_annotation(annotation_filepath, group, result)
+                    write_annotation(annotation_filepath, group, result, group_name)
 
                     if upload:
                         upload_annotation(case_name, annotation_filepath, username, password)
