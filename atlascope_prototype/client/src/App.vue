@@ -278,6 +278,8 @@ export default defineComponent({
           width,
           height,
           pointSize: 5,
+          pointScaleMode: 'constant',
+          lassoOnLongPress: true,
         });
         scatterplot.value.clear();
         normalizedPoints.value = normalizePoints(ellipses.value.map((ellipse) => {
@@ -435,7 +437,7 @@ export default defineComponent({
         item-props
         return-object
         hide-details
-        class="pa-3"
+        class="px-3"
       >
         <template v-slot:append>
           <v-icon icon="mdi-upload" @click="showFileUpload = true"></v-icon>
@@ -452,6 +454,7 @@ export default defineComponent({
         v-if="currentAnnotation"
         v-model="openPanel"
         class="pl-6 pr-3"
+        variant="accordion"
       >
         <v-expansion-panel value="elements">
           <v-expansion-panel-title>
@@ -568,7 +571,7 @@ export default defineComponent({
 }
 #scatter-canvas {
   width: 100%;
-  height: calc(100vh - 250px);
+  height: calc(100vh - 350px);
 }
 .v-list--slim .v-treeview-group.v-list-group {
   /* decrease tree indent */
