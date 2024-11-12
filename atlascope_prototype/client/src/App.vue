@@ -51,6 +51,7 @@ export default defineComponent({
     const openPanel = ref([]);
     const annotationColor = ref('#00ff00');
     const selectedColor = ref('#0000ff');
+    const numVisible = ref(0);
     const ellipses = computed(() => {
       if (currentAnnotation.value?.elements) {
         return currentAnnotation.value.elements.map((element) => {
@@ -199,6 +200,8 @@ export default defineComponent({
             info.tileHeight
           );
           map.value = geo.map(params.map);
+          map.value.geoOn(geo.event.pan, updateNumVisible)
+          map.value.geoOn(geo.event.zoom, updateNumVisible)
           center.value = map.value.center();
           zoom.value = map.value.zoom();
           params.layer.url = getImageTileUrl(image);
@@ -230,7 +233,7 @@ export default defineComponent({
           strokeWidth: 4,
           closed: true,
           strokeColor:  (_vertex, _vIndex, item) => item.color,
-          strokeOpacity: (_vertex, _vIndex, item) => item.opacity,
+          strokeOpacity: 1,
         })
         .geoOn(geo.event.feature.mousedown, (e) => {
           selectElement(e.data, e.sourceEvent)
@@ -245,6 +248,22 @@ export default defineComponent({
     function flyToElement(element) {
       if (map.value && element.center && maxZoom.value) {
         map.value.zoom(maxZoom.value).center(element.center);
+      }
+    }
+
+    function updateNumVisible() {
+      if (ellipses.value.length && showEllipses.value) {
+        const {left, top, right, bottom} = map.value.camera().bounds
+        numVisible.value = ellipses.value.filter((ellipse) => {
+          return (
+            ellipse.center.x > left &&
+            ellipse.center.x < right &&
+            ellipse.center.y > -top &&
+            ellipse.center.y < -bottom
+          )
+        }).length
+      } else {
+        numVisible.value = 0
       }
     }
 
@@ -356,6 +375,7 @@ export default defineComponent({
         getAnnotationContents(currentAnnotation.value._id).then((contents) => {
           currentAnnotation.value.elements = contents.annotation.elements
           loading.value = false;
+          updateNumVisible();
         })
       }
       if (openPanel.value === 'scatter') {
@@ -375,6 +395,8 @@ export default defineComponent({
       availableAnnotations,
       showFileUpload,
       showEllipses,
+      ellipses,
+      numVisible,
       annotationFile,
       submitAnnotationFile,
       currentAnnotation,
@@ -415,10 +437,17 @@ export default defineComponent({
         Select an Image from Girder to begin.
       </v-card-subtitle>
       <div id="map" style="height: 100%">
+        <v-card
+          v-if="activeImage && currentAnnotation && ellipses.length"
+          class="over-map pa-3"
+          style="width: fit-content; right: 10px"
+        >
+          {{ numVisible }} element{{ numVisible !== 1 ? "s" : "" }} visible
+        </v-card>
         <v-btn
           v-if="activeImage"
           icon="mdi-arrow-expand-all"
-          class="map-button"
+          class="over-map"
           style="left: 10px"
           @click="resetView"
         ></v-btn>
@@ -558,11 +587,10 @@ export default defineComponent({
   height: calc(100% - 70px);
   width: 100%;
 }
-.map-button {
-  position: absolute;
-  top: 10px;
-  /* leaflet uses z-index: 800 for zoom controls */
-  z-index: 400;
+.over-map {
+  position: absolute !important;
+  z-index: 3 !important;
+  top: 10px !important;
 }
 .color-preview {
   position: absolute;
