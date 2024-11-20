@@ -1,5 +1,5 @@
 <script lang="js">
-import { defineComponent, ref, watch, computed, nextTick } from "vue";
+import { defineComponent, ref, watch, nextTick } from "vue";
 import VResizeDrawer from  '@wdns/vuetify-resize-drawer';
 import { VTreeview } from 'vuetify/labs/VTreeview';
 import geo from 'geojs';
@@ -53,23 +53,7 @@ export default defineComponent({
     const selectedColor = ref('#0000ff');
     const numVisible = ref(0);
     const ellipses = ref([]);
-    const elementListLength = ref(0);
-    const elementList = computed(() => {
-      if (ellipses.value) {
-        const uniqueEllipses = ellipses.value.filter(
-          (element, index) => ellipses.value.map((e) => e.id).indexOf(element.id) === index
-        )
-        const sortedBySelected = uniqueEllipses.toSorted((e1, e2) => {
-          if (selectedElements.value.includes(e1.id) && selectedElements.value.includes(e2.id)) return e1.id - e2.id
-          else if (selectedElements.value.includes(e1.id)) return -1
-          else if (selectedElements.value.includes(e2.id)) return 1
-          return e1.id - e2.id
-        })
-        return sortedBySelected.slice(0, elementListLength.value)
-      } else {
-        return []
-      }
-    });
+    const elementList = ref([]);
     const selectedElements = ref([]);
     const normalizedPoints = ref();
     const scatterplot = ref();
@@ -118,7 +102,7 @@ export default defineComponent({
     function submitAnnotationFile() {
       if (annotationFile.value) {
         loading.value = true;
-        elementListLength.value = 0
+        elementList.value = [];
         selectedElements.value = [];
         currentAnnotation.value = undefined;
         const reader = new FileReader();
@@ -195,7 +179,7 @@ export default defineComponent({
       let elements = currentAnnotation.value?.elements;
       if (elements) {
         ellipses.value = elements.map((element) => {
-          const id = element.user?.id || -1;
+          const id = element.user?.id !== undefined ? element.user.id : -1;
           return {
             id,
             title: `Element ${id}`,
@@ -220,7 +204,7 @@ export default defineComponent({
             opacity: selectedElements.value.includes(id) ? 1 : 0.2,
             color: selectedElements.value.includes(id) ? selectedColor.value : annotationColor.value
           }
-        }).toSorted((e1, e2) => e1.id - e2.id)
+        })
       } else {
         ellipses.value = []
       }
@@ -280,10 +264,12 @@ export default defineComponent({
 
     async function expandElementList({ done }) {
       // implementation complies with Vuetify's Infinite Scroll component API
-      if (elementList.value.length === currentAnnotation.value?.elements.length) {
+      if (!ellipses.value || elementList.value.length === ellipses.value.length) {
         done('empty');
       } else {
-        elementListLength.value += 10
+        if (ellipses.value) {
+          elementList.value = ellipses.value.slice(0, elementList.value.length + 10)
+        }
         done('ok');
       }
     }
@@ -335,13 +321,15 @@ export default defineComponent({
           { x: 0, y: 0, width: 2, height: 2 },
           { transition: true }
         );
-        scatterplot.value.subscribe('select', ({ points }) => {
+        const updateSelectionFunction = ({ points }) => {
           // regl-scatterplot returns point indexes
           selectedElements.value = normalizedPoints.value.map((p, i) => {
             if (points.includes(i)) return p.id
             return undefined
           }).filter((id) => id);
-        })
+        }
+        scatterplot.value.subscribe('select', updateSelectionFunction)
+        scatterplot.value.subscribe('deselect', () => updateSelectionFunction({points: []}))
       }
     }
 
@@ -358,7 +346,7 @@ export default defineComponent({
       showFileUpload.value = false;
       annotationFile.value = undefined;
       currentAnnotation.value = undefined;
-      elementListLength.value = 0;
+      elementList.value = [];
       selectedElements.value = [];
       initView();
     })
