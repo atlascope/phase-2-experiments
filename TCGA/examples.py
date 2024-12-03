@@ -34,7 +34,7 @@ def download_examples(cases):
     print(f'Completed download in {datetime.now() - start} seconds.')
 
 
-def upload_images(cases, username=None, password=None):
+def upload_examples(cases, username=None, password=None):
     target_server = CONF.get('target_server', {})
     girder_api_root = target_server.get('api_root')
 
@@ -48,7 +48,7 @@ def upload_images(cases, username=None, password=None):
             "Configuration file must specify target_server.api_root"
         )
 
-    print(f'Uploading images to {girder_api_root}...')
+    print(f'Uploading examples to {girder_api_root}...')
     start = datetime.now()
     client = girder_client.GirderClient(apiUrl=girder_api_root)
     client.authenticate(username, password)
@@ -67,28 +67,32 @@ def upload_images(cases, username=None, password=None):
         reuseExisting=True,
     )
 
-    for case in DOWNLOADS_FOLDER.glob('*'):
-        case_name = case.name.split('.')[0]
+    for filepath in DOWNLOADS_FOLDER.glob('**/*'):
+        split = list(filter(None, str(filepath).replace(str(DOWNLOADS_FOLDER), '').split('/')))
+        case_name = split[0]
         if (cases is None and 'test' not in case_name) or (cases is not None and case_name in cases):
-            for image in case.glob('*'):
-                if image.is_file():
-                    print(f'Uploading image for {case_name}.')
-                    with open(image) as f:
-                        item = client.createItem(
-                            folder.get('_id'),
-                            case.name,
-                            reuseExisting=True,
-                        )
-                        item_id = item.get('_id')
-                        client.addMetadataToItem(item_id, {
-                            'project': 'Atlascope'
-                        })
-                        file_id, current = client.isFileCurrent(item_id, image.name, str(image))
-                        if not current:
-                            file_obj = client.uploadFileToItem(item_id, str(image))
-
-    # create large images for all items in folder
-    client.put(f'/large_image/folder/{folder.get("_id")}/tiles?recurse=true')
+            if filepath.is_file():
+                parents, filename = split[:-1], split[-1]
+                curr_parent = folder
+                for p in parents:
+                    curr_parent = client.createFolder(
+                        curr_parent.get('_id'),
+                        p,
+                        public=True,
+                        reuseExisting=True
+                    )
+                item = client.createItem(
+                    curr_parent.get('_id'),
+                    filename,
+                    reuseExisting=True,
+                )
+                item_id = item.get('_id')
+                client.addMetadataToItem(item_id, {
+                    'project': 'Atlascope'
+                })
+                file_id, current = client.isFileCurrent(item_id, filename, str(filepath))
+                if not current:
+                    file_obj = client.uploadFileToItem(item_id, str(filepath))
 
     print(f'Completed upload in {datetime.now() - start} seconds.')
 
@@ -118,7 +122,7 @@ def main(raw_args=None):
     )
 
     if command == 'upload':
-        upload_images(cases, username=username, password=password)
+        upload_examples(cases, username=username, password=password)
     elif command == 'download':
         download_examples(cases)
 
