@@ -10,12 +10,11 @@ import {
   getImageTileInfo,
   getImageTileUrl,
   listCollections,
-  listFolders,
+  listCollectionFolders,
+  listSubFolders,
   listItems,
-  listAnnotations,
-  getAnnotationContents,
 } from "./api";
-import { normalizePoints } from "./utils";
+import { fetchFeatureVectors, normalizePoints } from "./utils";
 
 export default defineComponent({
   components: {
@@ -62,7 +61,7 @@ export default defineComponent({
     function updateChildren(root, parent_id, children) {
       children = children.map((child) => {
         if (child._modelType !== 'item') {
-          child.children=[];
+          child.children = [];
         }
         return child
       })
@@ -72,6 +71,10 @@ export default defineComponent({
         root.children = root.children.map(
           (child) => updateChildren(child, parent_id, children)
         )
+      }
+      if (root.children.some((c) => ['nucleiMeta', 'nucleiProps'].includes(c.name))) {
+        root.image = root.children.find((c) => c._modelType == 'item')
+        root.children = undefined
       }
       return root;
     }
@@ -83,10 +86,14 @@ export default defineComponent({
         loadFunc = () => listCollections()
       }
       else if (item._modelType == 'collection') {
-        loadFunc = () => listFolders(item._id)
+        loadFunc = () => listCollectionFolders(item._id)
       }
       else if (item._modelType == 'folder') {
-        loadFunc = () => listItems(item._id)
+        loadFunc = () => {
+          return Promise.all([listSubFolders(item._id), listItems(item._id)]).then(
+            ([folders, items]) => [...folders, ...items]
+          )
+        }
       }
       if (loadFunc) {
         return loadFunc().then((data) => {
@@ -133,17 +140,10 @@ export default defineComponent({
       map.value = undefined;
       annotationLayer.value = undefined;
       if (activeImage.value?.length === 1) {
-        let image = activeImage.value[0]
-        listAnnotations(image._id).then((annotations) => {
-          availableAnnotations.value = annotations.map((a) => {
-            return {
-              _id: a._id,
-              title: a.annotation.name,
-              subtitle: a.annotation.description,
-              elements: [],
-            }
-          });
-        })
+        loading.value = true;
+        const caseFolder = activeImage.value[0];
+        fetchFeatureVectors(caseFolder)
+        const image = caseFolder.image;
         getImageTileInfo(image).then((info) => {
           maxZoom.value = info.levels - 1;
           let params = geo.util.pixelCoordinateParams(
@@ -337,7 +337,10 @@ export default defineComponent({
     watch(openParents, () => {
       openParents.value.forEach((parent) => {
         if (!parent.children?.length) {
-          loadChildren(parent);
+          loadChildren(parent).then(() => {
+            // preemptively load 1 level below what's open
+            parent.children.forEach(loadChildren)
+          });
         }
       })
     })
@@ -372,12 +375,12 @@ export default defineComponent({
     watch(currentAnnotation, () => {
       if (currentAnnotation.value?._id) {
         loading.value = true;
-        getAnnotationContents(currentAnnotation.value._id).then((contents) => {
-          currentAnnotation.value.elements = contents.annotation.elements
-          loading.value = false;
-          updateEllipses();
-          updateNumVisible();
-        })
+        // getAnnotationContents(currentAnnotation.value._id).then((contents) => {
+        //   currentAnnotation.value.elements = contents.annotation.elements
+        //   loading.value = false;
+        //   updateEllipses();
+        //   updateNumVisible();
+        // })
       }
       if (openPanel.value === 'scatter') {
         nextTick().then(drawScatter)
@@ -417,7 +420,6 @@ export default defineComponent({
 
 <template>
   <v-app>
-    <v-progress-linear v-if="loading" indeterminate />
     <VResizeDrawer name="left">
       <v-treeview
         v-model:opened="openParents"
@@ -434,6 +436,7 @@ export default defineComponent({
       </v-treeview>
     </VResizeDrawer>
     <v-main style="width: 100%; height: 100%">
+      <v-progress-linear v-if="loading" indeterminate />
       <v-card-subtitle v-if="!activeImage" class="pa-5">
         Select an Image from Girder to begin.
       </v-card-subtitle>
