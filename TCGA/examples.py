@@ -9,6 +9,7 @@ import girder_client
 import requests
 
 from .constants import CONF, DOWNLOADS_FOLDER
+from .read_vectors import get_case_vector
 
 
 def download_examples(cases):
@@ -67,32 +68,36 @@ def upload_examples(cases, username=None, password=None):
         reuseExisting=True,
     )
 
-    for filepath in DOWNLOADS_FOLDER.glob('**/*'):
-        split = list(filter(None, str(filepath).replace(str(DOWNLOADS_FOLDER), '').split('/')))
-        case_name = split[0]
+    for case_folder in DOWNLOADS_FOLDER.glob('*'):
+        case_name = case_folder.name
         if (cases is None and 'test' not in case_name) or (cases is not None and case_name in cases):
-            if filepath.is_file():
-                parents, filename = split[:-1], split[-1]
-                curr_parent = folder
-                for p in parents:
-                    curr_parent = client.createFolder(
-                        curr_parent.get('_id'),
-                        p,
-                        public=True,
-                        reuseExisting=True
-                    )
-                item = client.createItem(
-                    curr_parent.get('_id'),
-                    filename,
-                    reuseExisting=True,
-                )
-                item_id = item.get('_id')
-                client.addMetadataToItem(item_id, {
-                    'project': 'Atlascope'
-                })
-                file_id, current = client.isFileCurrent(item_id, filename, str(filepath))
-                if not current:
-                    file_obj = client.uploadFileToItem(item_id, str(filepath))
+            case_folder_item = client.createFolder(
+                folder.get('_id'),
+                case_name,
+                public=True,
+                reuseExisting=True
+            )
+            image_path = case_folder / f'{case_name}.svs'
+            if image_path.exists():
+                parquet_path = case_folder / f'{case_name}.parquet'
+                if not parquet_path.exists():
+                    vector = get_case_vector(case_name=case_name)
+                    vector.to_parquet(parquet_path)
+                print(f'Uploading image and parquet file for {case_name}.')
+                for p in [image_path, parquet_path]:
+                    with open(p) as f:
+                        item = client.createItem(
+                            case_folder_item.get('_id'),
+                            p.name,
+                            reuseExisting=True,
+                        )
+                        item_id = item.get('_id')
+                        client.addMetadataToItem(item_id, {
+                            'project': 'Atlascope'
+                        })
+                        file_id, current = client.isFileCurrent(item_id, p.name, str(p))
+                        if not current:
+                            file_obj = client.uploadFileToItem(item_id, str(p))
 
     print(f'Completed upload in {datetime.now() - start} seconds.')
 

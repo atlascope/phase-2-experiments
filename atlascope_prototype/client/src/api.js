@@ -38,7 +38,6 @@ export async function listItemFiles(itemId) {
   return (await girderClient.get(url)).data;
 }
 
-export async function getFileContents(fileId) {
-  const url = `${process.env.VUE_APP_API_ROOT}/file/${fileId}/download`;
-  return (await girderClient.get(url)).data;
+export function getItemFileUrl(fileId) {
+  return `${process.env.VUE_APP_API_ROOT}/file/${fileId}/download?contentDisposition=inline`;
 }

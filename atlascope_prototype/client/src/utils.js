@@ -1,65 +1,55 @@
-import {
-  listItems,
-  listSubFolders,
-  listItemFiles,
-  getFileContents,
-} from "./api";
+import { listItemFiles, getItemFileUrl } from "./api";
+import { asyncBufferFromUrl, parquetRead } from "hyparquet";
 
-const LIST_LIMIT = 50;
-
-export async function fetchFeatureVectors(caseFolder) {
+export async function fetchNuclei(parquetItem) {
   const start = new Date();
-  const metaItems = [];
-  const propItems = [];
-  const subFolders = await listSubFolders(caseFolder._id);
-  await Promise.all(
-    subFolders.map(async (subFolder) => {
-      let items = Array(LIST_LIMIT);
-      let offset = 0;
-      while (items.length == LIST_LIMIT) {
-        items = await listItems(subFolder._id, offset);
-        offset += items?.length || 0;
-        if (subFolder.name === "nucleiMeta") {
-          metaItems.push(...items);
-        } else if (subFolder.name === "nucleiProps") {
-          propItems.push(...items);
-        }
-      }
-    })
-  );
-  await Promise.all(
-    metaItems.map(async (metaItem) => {
-      const propItem = propItems.find((i) => i.name === metaItem.name);
-      const metaFiles = await listItemFiles(metaItem._id);
-      const propFiles = await listItemFiles(propItem._id);
-      if (metaFiles.length && propFiles.length) {
-        const metaContents = await getFileContents(metaFiles[0]._id);
-        const propContents = await getFileContents(propFiles[0]._id);
-        const meta = metaContents.split("\n").map((line) => line.split(","));
-        const prop = propContents.split("\n").map((line) => line.split(","));
-        console.log(meta.length, prop.length);
-        // const nuclei = {};
-        [meta, prop].forEach((group) => {
-          const columnHeaders = group[0];
-          group.slice(1).forEach((row) => {
-            const attrs = Object.fromEntries(
-              row.map((v, i) => {
-                return [columnHeaders[i], v];
-              })
-            );
-            console.log(attrs);
+  let nuclei = undefined;
+  if (parquetItem) {
+    const files = await listItemFiles(parquetItem._id);
+    if (files && files.length) {
+      const url = getItemFileUrl(files[0]._id);
+      await parquetRead({
+        file: await asyncBufferFromUrl({ url }),
+        rowFormat: "object",
+        onComplete: (data) => {
+          nuclei = data.map((row, id) => {
+            const roi = {};
+            row.roiname
+              .split("_")
+              .slice(2)
+              .forEach((component) => {
+                let [key, value] = component.split("-");
+                roi[key] = parseInt(value);
+              });
+            const x = row["Unconstrained.Identifier.CentroidX"] * 2 + roi.left;
+            const y = row["Unconstrained.Identifier.CentroidY"] * 2 + roi.top;
+            const width = row["Size.MinorAxisLength"] * 2;
+            const height = row["Size.MajorAxisLength"] * 2;
+            const rotation = 0 - row["Orientation.Orientation"];
+            return {
+              id,
+              title: `Element ${id}`,
+              details: row,
+              x,
+              y,
+              width,
+              height,
+              radius: Math.max(width, height),
+              rotation: width > height ? rotation : rotation + Math.PI / 2,
+              aspectRatio: Math.min(width, height) / Math.max(width, height),
+            };
           });
-          // console.log(columnHeaders, group.slice(1));
-        });
-      }
-    })
-  );
+        },
+      });
+    }
+  }
   const end = new Date();
   console.log(
     "Retrieved feature vector data in ",
     (end - start) / 1000,
     " seconds."
   );
+  return nuclei;
 }
 
 // regl-scatterplot requires points to be normalized for performance
