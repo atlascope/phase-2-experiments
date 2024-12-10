@@ -64,3 +64,7 @@ export function normalizePoints(points) {
     y: (p.y - yMin) / (yMax - p.y),
   }));
 }
+
+export function clamp(value, range) {
+  return Math.max(Math.min(value, Math.max(...range)), Math.min(...range));
+}

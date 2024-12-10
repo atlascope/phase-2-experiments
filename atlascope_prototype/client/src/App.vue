@@ -5,6 +5,8 @@ import { VTreeview } from 'vuetify/labs/VTreeview';
 import geo from 'geojs';
 import createScatterplot from 'regl-scatterplot';
 import debounce from 'lodash/debounce';
+import colorbrewer from 'colorbrewer';
+import { createColorMap, linearScale } from "@colormap/core";
 
 import {
   getImageTileInfo,
@@ -14,7 +16,7 @@ import {
   listSubFolders,
   listItems,
 } from "./api";
-import { fetchNuclei, normalizePoints } from "./utils";
+import { fetchNuclei, normalizePoints, clamp } from "./utils";
 
 export default defineComponent({
   components: {
@@ -40,18 +42,28 @@ export default defineComponent({
     const zoom = ref(2);
     const maxZoom = ref();
     const featureLayer = ref();
-    const featureColor = ref('#00ff00');
-    const selectedColor = ref('#0000ff');
-
-    // Nuclei Options
-    const nuclei = ref([]);
-    const showEllipses = ref(true);
-    const openPanel = ref([]);
+    const uiLayer = ref();
+    const colorLegend = ref();
     const numVisible = ref(0);
+
+    // Data Structures
+    const nuclei = ref([]);
     const elementList = ref([]);
     const selectedElements = ref([]);
+
+    // Scatter
     const normalizedPoints = ref();
     const scatterplot = ref();
+
+    // Options
+    const showEllipses = ref(true);
+    const openPanel = ref([]);
+    const featureColor = ref('#00ff00');
+    const selectedColor = ref('#0000ff');
+    const constantColor = ref(true);
+    const colorByAttribute = ref();
+    const colormapType = ref();
+    const colormapName = ref();
 
     // Functions
     function updateChildren(root, parent_id, children) {
@@ -137,6 +149,15 @@ export default defineComponent({
           featureLayer.value = map.value.createLayer('feature', {
             features: ['marker']
           });
+          uiLayer.value = map.value.createLayer('ui');
+          colorLegend.value = uiLayer.value.createWidget(
+            'colorLegend', {
+              position: {
+                top: 50,
+                right: 10,
+              }
+            }
+          )
           map.value.draw();
         })
       }
@@ -148,15 +169,52 @@ export default defineComponent({
       }
     }
 
+    function getColormap() {
+      if (colormapName.value && colorByAttribute.value) {
+        const allValues = [... new Set(
+          nuclei.value.map((nucleus) => nucleus.details[colorByAttribute.value])
+        )]
+        const numeric = !allValues.some((v) => typeof v === 'string');
+        const availableSets = colorbrewer[colormapName.value];
+        const availableSetLengths = Object.keys(availableSets).map((v) => parseInt(v))
+        const numColors = clamp(allValues.length, availableSetLengths)
+        const colors = availableSets[numColors];
+        let colormap = undefined;
+        let domain = undefined;
+        if (numeric) {
+          domain = [Math.min(...allValues), Math.max(...allValues)];
+          colormap = createColorMap(colors, linearScale(domain, [0, 1]))
+        } else {
+          colormap = (v) => colors[clamp(allValues.indexOf(v), [0, numColors])]
+        }
+        colorLegend.value.categories([{
+          name: colorByAttribute.value,
+          type: allValues.length > numColors ? 'continuous' : 'discrete',
+          scale: numeric ? 'linear' : 'ordinal',
+          domain: numeric ? domain : allValues,
+          colors
+        }]);
+        return colormap;
+      } else {
+        colorLegend.value.categories([]);
+        return undefined;
+      }
+    }
+
     function drawEllipses() {
       if (!featureLayer.value) return;
       loading.value = true;
       featureLayer.value.clear()
+      const colormap = getColormap();
       if (nuclei.value.length && showEllipses.value) {
         featureLayer.value.createFeature('marker')
         .data(nuclei.value)
         .style({
-          strokeColor:  (item) => selectedElements.value.includes(item.id) ? selectedColor.value : featureColor.value,
+          strokeColor:  (item) => {
+            if (selectedElements.value.includes(item.id)) return selectedColor.value
+            if (colormap) return colormap(item.details[colorByAttribute.value])
+            return featureColor.value
+          },
           radius: (item) => item.width / (2 ** (maxZoom.value + 1)),
           rotation: (item) => item.rotation,
           symbolValue: (item) => item.aspectRatio,
@@ -168,7 +226,7 @@ export default defineComponent({
           strokeOpacity: 1,
           fillOpacity: 0,
         })
-        .geoOn(geo.event.feature.mousedown, (e) => {
+        .geoOn(geo.event.feature.mouseclick, (e) => {
           selectElement(e.data, e.sourceEvent)
         })
         .draw()
@@ -186,15 +244,14 @@ export default defineComponent({
 
     function updateNumVisible() {
       if (nuclei.value.length && showEllipses.value) {
-        const {left, top, right, bottom} = map.value.camera().bounds
-        numVisible.value = nuclei.value.filter((nucleus) => {
-          return (
-            nucleus.x > left &&
-            nucleus.x < right &&
-            nucleus.y > -top &&
-            nucleus.y < -bottom
-          )
-        }).length
+        const feature = featureLayer.value.features()[0];
+        const {left, top, right, bottom} = map.value.bounds()
+        const boxSearch = feature.boxSearch({
+          x: left, y: top
+        },{
+          x: right, y: bottom
+        })
+        numVisible.value = boxSearch.found?.length
       } else {
         numVisible.value = 0
       }
@@ -310,7 +367,6 @@ export default defineComponent({
     });
 
     watch(nuclei, () => {
-      console.log(nuclei.value, nuclei.value.length)
       if (nuclei.value?.length) {
         drawEllipses();
         updateNumVisible();
@@ -324,6 +380,23 @@ export default defineComponent({
 
     watch(featureColor, debounce(drawEllipses, 1000));
 
+    watch(constantColor, () => {
+      colorByAttribute.value = undefined;
+      colormapType.value = undefined;
+      colormapName.value = undefined;
+    })
+
+    watch(colorByAttribute, () => {
+      colormapType.value = undefined;
+      colormapName.value = undefined;
+    })
+
+    watch(colormapType, () => {
+      colormapName.value = undefined;
+    })
+
+    watch(colormapName, drawEllipses)
+
     return {
       loading,
       treeData,
@@ -336,6 +409,11 @@ export default defineComponent({
       openPanel,
       featureColor,
       selectedColor,
+      constantColor,
+      colorByAttribute,
+      colormapType,
+      colormapName,
+      colorbrewer,
       selectedElements,
       expandElementList,
       resetView,
@@ -460,7 +538,29 @@ export default defineComponent({
             />
           </v-expansion-panel-title>
           <v-expansion-panel-text>
-            <v-color-picker v-model="featureColor"></v-color-picker>
+            <v-switch v-model="constantColor" label="Constant Color" />
+            <v-color-picker
+              v-model="featureColor"
+              v-if="constantColor"
+            ></v-color-picker>
+            <v-select
+              v-model="colorByAttribute"
+              :items="Object.keys(nuclei[0].details)"
+              label="Color By Attribute"
+              :list-props="{ maxWidth: '300px' }"
+            />
+            <v-select
+              v-model="colormapType"
+              v-if="colorByAttribute"
+              :items="['sequential', 'singlehue', 'diverging', 'qualitative']"
+              label="Colormap Type"
+            ></v-select>
+            <v-select
+              v-model="colormapName"
+              v-if="colormapType"
+              :items="colorbrewer.schemeGroups[colormapType]"
+              label="Colormap Name"
+            ></v-select>
           </v-expansion-panel-text>
         </v-expansion-panel>
         <v-expansion-panel
