@@ -140,7 +140,7 @@ export default defineComponent({
             info.tileHeight
           );
           map.value = geo.map(params.map);
-          map.value.geoOn(geo.event.pan, updateNumVisible)
+          map.value.geoOn(geo.event.pan, debounce(updateNumVisible, 500))
           center.value = map.value.center();
           zoom.value = map.value.zoom();
           params.layer.url = getImageTileUrl(image);
@@ -185,7 +185,13 @@ export default defineComponent({
         let domain = undefined;
         if (numeric) {
           domain = [Math.min(...allValues), Math.max(...allValues)];
-          colormap = createColorMap(colors, linearScale(domain, [0, 255]))
+          colormap = (v) => {
+            const [r, g, b] = createColorMap(
+              colors.map((c) => [c.r, c.g, c.b]),
+              linearScale(domain, [0, 1])
+            )(v);
+            return {r, g, b}
+          };
         } else {
           colormap = (v) => colors[clamp(allValues.indexOf(v), [0, numColors])]
         }
@@ -213,6 +219,18 @@ export default defineComponent({
         .geoOn(geo.event.feature.mouseclick, (e) => {
           selectElement(e.data, e.sourceEvent)
         });
+        feature.style({
+          radius: (item) => item.width / (2 ** (maxZoom.value + 1)),
+          rotation: (item) => item.rotation,
+          symbolValue: (item) => item.aspectRatio,
+          symbol: geo.markerFeature.symbols.ellipse,
+          scaleWithZoom: geo.markerFeature.scaleMode.fill,
+          rotateWithMap: true,
+          strokeWidth: 4,
+          strokeOffset: 1,
+          strokeOpacity: 1,
+          fillOpacity: 0,
+        })
         updateEllipses();
         feature.draw();
       } else {
@@ -227,25 +245,21 @@ export default defineComponent({
         const colormap = getColormap();
         feature.visible(showEllipses.value);
         if (showEllipses.value) {
-          feature.style({
-            strokeColor:  (item) => {
-              if (selectedElements.value.includes(item.id)) return selectedColor.value
-              if (colormap) return rgbToHex(colormap(item.details[colorByAttribute.value]))
-              return featureColor.value
-            },
-            radius: (item) => item.width / (2 ** (maxZoom.value + 1)),
-            rotation: (item) => item.rotation,
-            symbolValue: (item) => item.aspectRatio,
-            symbol: geo.markerFeature.symbols.ellipse,
-            scaleWithZoom: geo.markerFeature.scaleMode.fill,
-            rotateWithMap: true,
-            strokeWidth: 4,
-            strokeOffset: 1,
-            strokeOpacity: 1,
-            fillOpacity: 0,
-          })
+          const featureColorRGB = hexToRgb(featureColor.value);
+          const selectedColorRGB = hexToRgb(selectedColor.value);
+          const styles = {
+            strokeColor: nuclei.value.map((nucleus) => {
+              if (selectedElements.value.includes(nucleus.id)) {
+                return selectedColorRGB;
+              }
+              if (colormap) {
+                return colormap(nucleus.details[colorByAttribute.value]);
+              }
+              return featureColorRGB;
+            })
+          };
+          feature.updateStyleFromArray(styles, null, true);
         }
-        feature.draw();
       }
     }
 
@@ -278,13 +292,14 @@ export default defineComponent({
     }
 
     function selectElement(element, event) {
-      if (!event.modifiers.shift) selectedElements.value = []
       if (selectedElements.value.includes(element.id)) {
         selectedElements.value = selectedElements.value.filter((v) => v !== element.id)
-      } else {
+      } else if (event.modifiers.shift) {
         selectedElements.value = [
           ...selectedElements.value, element.id
         ]
+      } else {
+        selectedElements.value = [element.id];
       }
     }
 
@@ -450,11 +465,17 @@ export default defineComponent({
       </v-treeview>
     </VResizeDrawer>
     <v-main style="width: 100%; height: 100%">
-      <v-progress-linear v-if="loading" indeterminate />
       <v-card-subtitle v-if="!activeImage" class="pa-5">
         Select an Image from Girder to begin.
       </v-card-subtitle>
       <div id="map" style="height: 100%">
+        <v-card
+          v-if="loading"
+          class="over-map pa-3"
+          style="width: fit-content; right: 10px"
+        >
+          Loading Feature Vector Data...
+        </v-card>
         <v-card
           v-if="activeImage && nuclei.length"
           class="over-map pa-3"
