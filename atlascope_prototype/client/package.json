@@ -14,7 +14,7 @@
     "axios": "^1.7.4",
     "colorbrewer": "^1.5.7",
     "core-js": "^3.8.3",
-    "geojs": "^1.12.3",
+    "geojs": "^1.13.0",
     "hammerjs": "^2.0.8",
     "hyparquet": "^1.6.3",
     "regl-scatterplot": "^1.11.0",
