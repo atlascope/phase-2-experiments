@@ -25,7 +25,7 @@ def umap(
     init: str='random'
 ):
     if result_filepath.exists() and use_cache:
-        return pandas.read_csv(result_filepath, index_col=0)
+        return pandas.read_parquet(result_filepath)
     if not result_filepath.parent.exists():
         result_filepath.parent.mkdir(parents=True, exist_ok=True)
 
@@ -44,7 +44,7 @@ def umap(
             index=vector.index,
             columns=['x', 'y']
         )
-        df.to_csv(result_filepath)
+        df.to_parquet(result_filepath)
         print(f'Completed in {datetime.now() - start} seconds.')
         return df
     except Exception as e:
@@ -61,7 +61,7 @@ def tsne(
     init: str='random'
 ):
     if result_filepath.exists() and use_cache:
-        return pandas.read_csv(result_filepath, index_col=0)
+        return pandas.read_parquet(result_filepath)
     if not result_filepath.parent.exists():
         result_filepath.parent.mkdir(parents=True, exist_ok=True)
 
@@ -81,7 +81,7 @@ def tsne(
             index=vector.index,
             columns=[['x', 'y', 'z'][i] for i in range(n_components)]
         )
-        df.to_csv(result_filepath)
+        df.to_parquet(result_filepath)
         print(f'Completed in {datetime.now() - start} seconds.')
         return df
     except Exception as e:

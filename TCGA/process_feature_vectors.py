@@ -52,9 +52,9 @@ def process_feature_vectors(
                 group_names = group_records.get(groupby)
                 if group_names is not None:
                     for group_name in group_names:
-                        group_result_file = case_results_folder / f'{group_name}.csv'
+                        group_result_file = case_results_folder / f'{group_name}.parquet'
                         if group_result_file.exists():
-                            group_result = pandas.read_csv(group_result_file, index_col=0)
+                            group_result = pandas.read_parquet(group_result_file)
                             all_results[group_name] = group_result
 
             # clear annotations if uploading new ones
@@ -101,7 +101,7 @@ def process_feature_vectors(
                     # get dimensionality reduction results
                     result = None
                     if reduce_dims:
-                        result_filepath = Path(REDUCE_DIMS_RESULTS_FOLDER, reduce_dims_func, case_name, f'{group_name}.csv')
+                        result_filepath = Path(REDUCE_DIMS_RESULTS_FOLDER, reduce_dims_func, case_name, f'{group_name}.parquet')
                         if reduce_dims_func == 'umap':
                             result = umap(group_copy, result_filepath, use_cache=not no_cache)
                         elif reduce_dims_func == 'tsne':
