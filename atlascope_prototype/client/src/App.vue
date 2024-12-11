@@ -16,7 +16,7 @@ import {
   listSubFolders,
   listItems,
 } from "./api";
-import { fetchNuclei, normalizePoints, clamp } from "./utils";
+import { fetchNuclei, normalizePoints, clamp, hexToRgb, rgbToHex } from "./utils";
 
 export default defineComponent({
   components: {
@@ -141,7 +141,6 @@ export default defineComponent({
           );
           map.value = geo.map(params.map);
           map.value.geoOn(geo.event.pan, updateNumVisible)
-          map.value.geoOn(geo.event.zoom, updateNumVisible)
           center.value = map.value.center();
           zoom.value = map.value.zoom();
           params.layer.url = getImageTileUrl(image);
@@ -153,9 +152,12 @@ export default defineComponent({
           colorLegend.value = uiLayer.value.createWidget(
             'colorLegend', {
               position: {
-                top: 50,
+                bottom: 10,
+                left: 10,
                 right: 10,
-              }
+              },
+              ticks: 10,
+              width: 1000,
             }
           )
           map.value.draw();
@@ -178,12 +180,12 @@ export default defineComponent({
         const availableSets = colorbrewer[colormapName.value];
         const availableSetLengths = Object.keys(availableSets).map((v) => parseInt(v))
         const numColors = clamp(allValues.length, availableSetLengths)
-        const colors = availableSets[numColors];
+        const colors = availableSets[numColors].map((c) => hexToRgb(c));
         let colormap = undefined;
         let domain = undefined;
         if (numeric) {
           domain = [Math.min(...allValues), Math.max(...allValues)];
-          colormap = createColorMap(colors, linearScale(domain, [0, 1]))
+          colormap = createColorMap(colors, linearScale(domain, [0, 255]))
         } else {
           colormap = (v) => colors[clamp(allValues.indexOf(v), [0, numColors])]
         }
@@ -192,7 +194,7 @@ export default defineComponent({
           type: allValues.length > numColors ? 'continuous' : 'discrete',
           scale: numeric ? 'linear' : 'ordinal',
           domain: numeric ? domain : allValues,
-          colors
+          colors: colors.map((c) => rgbToHex(c))
         }]);
         return colormap;
       } else {
@@ -205,35 +207,46 @@ export default defineComponent({
       if (!featureLayer.value) return;
       loading.value = true;
       featureLayer.value.clear()
-      const colormap = getColormap();
-      if (nuclei.value.length && showEllipses.value) {
-        featureLayer.value.createFeature('marker')
+      if (nuclei.value.length) {
+        const feature = featureLayer.value.createFeature('marker')
         .data(nuclei.value)
-        .style({
-          strokeColor:  (item) => {
-            if (selectedElements.value.includes(item.id)) return selectedColor.value
-            if (colormap) return colormap(item.details[colorByAttribute.value])
-            return featureColor.value
-          },
-          radius: (item) => item.width / (2 ** (maxZoom.value + 1)),
-          rotation: (item) => item.rotation,
-          symbolValue: (item) => item.aspectRatio,
-          symbol: geo.markerFeature.symbols.ellipse,
-          scaleWithZoom: geo.markerFeature.scaleMode.fill,
-          rotateWithMap: true,
-          strokeWidth: 4,
-          strokeOffset: 1,
-          strokeOpacity: 1,
-          fillOpacity: 0,
-        })
         .geoOn(geo.event.feature.mouseclick, (e) => {
           selectElement(e.data, e.sourceEvent)
-        })
-        .draw()
+        });
+        updateEllipses();
+        feature.draw();
       } else {
         featureLayer.value.draw()
       }
       loading.value = false;
+    }
+
+    function updateEllipses() {
+      const feature = featureLayer.value?.features()[0];
+      if (feature) {
+        const colormap = getColormap();
+        feature.visible(showEllipses.value);
+        if (showEllipses.value) {
+          feature.style({
+            strokeColor:  (item) => {
+              if (selectedElements.value.includes(item.id)) return selectedColor.value
+              if (colormap) return rgbToHex(colormap(item.details[colorByAttribute.value]))
+              return featureColor.value
+            },
+            radius: (item) => item.width / (2 ** (maxZoom.value + 1)),
+            rotation: (item) => item.rotation,
+            symbolValue: (item) => item.aspectRatio,
+            symbol: geo.markerFeature.symbols.ellipse,
+            scaleWithZoom: geo.markerFeature.scaleMode.fill,
+            rotateWithMap: true,
+            strokeWidth: 4,
+            strokeOffset: 1,
+            strokeOpacity: 1,
+            fillOpacity: 0,
+          })
+        }
+        feature.draw();
+      }
     }
 
     function flyToElement(element) {
@@ -245,13 +258,8 @@ export default defineComponent({
     function updateNumVisible() {
       if (nuclei.value.length && showEllipses.value) {
         const feature = featureLayer.value.features()[0];
-        const {left, top, right, bottom} = map.value.bounds()
-        const boxSearch = feature.boxSearch({
-          x: left, y: top
-        },{
-          x: right, y: bottom
-        })
-        numVisible.value = boxSearch.found?.length
+        const polySearch = feature.polygonSearch(map.value.corners());
+        numVisible.value = polySearch.found?.length;
       } else {
         numVisible.value = 0
       }
@@ -363,7 +371,7 @@ export default defineComponent({
         }).filter((i) => i)
         scatterplot.value.select(selectedIndexes, {preventEvent: true})
       }
-      drawEllipses();
+      updateEllipses();
     });
 
     watch(nuclei, () => {
@@ -376,9 +384,9 @@ export default defineComponent({
       }
     });
 
-    watch(showEllipses, drawEllipses);
+    watch(showEllipses, updateEllipses);
 
-    watch(featureColor, debounce(drawEllipses, 1000));
+    watch(featureColor, debounce(updateEllipses, 1000));
 
     watch(constantColor, () => {
       colorByAttribute.value = undefined;
@@ -395,7 +403,7 @@ export default defineComponent({
       colormapName.value = undefined;
     })
 
-    watch(colormapName, drawEllipses)
+    watch(colormapName, updateEllipses)
 
     return {
       loading,
