@@ -73,15 +73,18 @@ export function hexToRgb(hex) {
   // from https://stackoverflow.com/questions/5623838/rgb-to-hex-and-hex-to-rgb
   var result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
   return result
-    ? [
-        parseInt(result[1], 16),
-        parseInt(result[2], 16),
-        parseInt(result[3], 16),
-      ]
+    ? {
+        r: parseInt(result[1], 16) / 255,
+        g: parseInt(result[2], 16) / 255,
+        b: parseInt(result[3], 16) / 255,
+      }
     : null;
 }
 
-export function rgbToHex([r, g, b]) {
+export function rgbToHex({ r, g, b }) {
   // from https://stackoverflow.com/questions/5623838/rgb-to-hex-and-hex-to-rgb
+  r *= 255;
+  g *= 255;
+  b *= 255;
   return "#" + ((1 << 24) | (r << 16) | (g << 8) | b).toString(16).slice(1);
 }
