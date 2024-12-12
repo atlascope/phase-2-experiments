@@ -52,6 +52,37 @@ export async function fetchNuclei(parquetItem) {
   return nuclei;
 }
 
+export async function fetchResult(parquetItem) {
+  const start = new Date();
+  let result = [];
+
+  if (parquetItem) {
+    const files = await listItemFiles(parquetItem._id);
+    if (files && files.length) {
+      const url = getItemFileUrl(files[0]._id);
+      await parquetRead({
+        file: await asyncBufferFromUrl({ url }),
+        rowFormat: "object",
+        onComplete: (data) => {
+          result = data.map((row, index) => ({
+            id: index,
+            x: row.x,
+            y: row.y,
+          }));
+        },
+      });
+    }
+  }
+
+  const end = new Date();
+  console.log(
+    "Retrieved dimensionality reduction result data in ",
+    (end - start) / 1000,
+    " seconds."
+  );
+  return result;
+}
+
 // regl-scatterplot requires points to be normalized for performance
 export function normalizePoints(points) {
   const xMin = Math.min(...points.map((p) => p.x));
