@@ -2,10 +2,10 @@ import json
 from pathlib import Path
 from typing import Optional
 
-import girder_client
 import pandas
 
 from .constants import CONF
+from .client import get_client
 
 
 def write_annotation(
@@ -85,18 +85,7 @@ def clear_annotations(
     username: str,
     password: str
 ):
-    target_server = CONF.get('target_server', {})
-    api_root = target_server.get('api_root')
-    folder_id = target_server.get('folder_id')
-
-    if not api_root or not folder_id:
-        raise ValueError(
-            "Configuration file must specify target_server.api_root and target_server.folder_id"
-        )
-
-    client = girder_client.GirderClient(apiUrl=api_root)
-    client.authenticate(username, password)
-
+    client = get_client(username, password)
     for item in client.listItem(folder_id, case_name):
         for old_annotation in client.get(
             'annotation',
@@ -114,17 +103,7 @@ def upload_annotation(
     username: str,
     password: str
 ):
-    target_server = CONF.get('target_server', {})
-    api_root = target_server.get('api_root')
-    folder_id = target_server.get('folder_id')
-
-    if not api_root or not folder_id:
-        raise ValueError(
-            "Configuration file must specify target_server.api_root and target_server.folder_id"
-        )
-
-    client = girder_client.GirderClient(apiUrl=api_root)
-    client.authenticate(username, password)
+    client = get_client(username, password)
     with open(filepath) as f:
         annotation_contents = json.load(f)
     for item in client.listItem(folder_id, case_name):

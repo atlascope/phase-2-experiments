@@ -15,7 +15,7 @@ def plot_all(groupby):
             for case_folder in method_folder.glob('*'):
                 case_name = case_folder.name
                 for result_file in case_folder.glob('*'):
-                    result = pandas.read_csv(result_file, index_col=0)
+                    result = pandas.read_parquet(result_file)
                     if groupby == 'case':
                         result_group_name = case_name
                         plot_name = result_file.name
