@@ -16,7 +16,7 @@ import {
   listSubFolders,
   listItems,
 } from "./api";
-import { fetchNuclei, normalizePoints, clamp, hexToRgb, rgbToHex } from "./utils";
+import { fetchNuclei, fetchResult, normalizePoints, clamp, hexToRgb, rgbToHex } from "./utils";
 
 export default defineComponent({
   components: {
@@ -52,12 +52,16 @@ export default defineComponent({
     const selectedElements = ref([]);
 
     // Scatter
+    const availableResults = ref([]);
+    const currentResult = ref();
+    const loadingScatter = ref(false);
     const normalizedPoints = ref();
     const scatterplot = ref();
 
     // Options
     const showEllipses = ref(true);
     const openPanel = ref([]);
+    const nucleiColors = ref();
     const featureColor = ref('#00ff00');
     const selectedColor = ref('#0000ff');
     const constantColor = ref(true);
@@ -75,16 +79,16 @@ export default defineComponent({
       })
       if (root._id === parent_id) {
         root.children = children;
-      } else {
+        root.parquet = root.children.find((c) => c.name === root.name + '.parquet');
+        root.image = root.children.find((c) => c.name === root.name + '.svs');
+        root.results = root.children.filter((c) => c.name.match(`${root.name} (UMAP|TSNE) \\(\\d+\\).parquet`))
+        if (root.image) {
+          root.children = undefined;
+        }
+      } else if (root.children) {
         root.children = root.children.map(
           (child) => updateChildren(child, parent_id, children)
         )
-      }
-      const parquet = root.children.find((c) => c.name.includes('parquet'))
-      if (parquet) {
-        root.parquet = parquet;
-        root.image = root.children.find((c) => c.name.includes('svs'));
-        root.children = undefined;
       }
       return root;
     }
@@ -129,6 +133,13 @@ export default defineComponent({
           nuclei.value =  data;
           loading.value = false;
         })
+        availableResults.value = caseFolder.results.map((result) => {
+          return {
+            _id: result._id,
+            name: result.name.replace(caseFolder.name, '').replace('.parquet', '').trim(),
+            metadata: result.meta,
+          }
+        });
         const image = caseFolder.image;
         getImageTileInfo(image).then((info) => {
           maxZoom.value = info.levels - 1;
@@ -247,16 +258,17 @@ export default defineComponent({
         if (showEllipses.value) {
           const featureColorRGB = hexToRgb(featureColor.value);
           const selectedColorRGB = hexToRgb(selectedColor.value);
+          nucleiColors.value = nuclei.value.map((nucleus) => {
+            if (selectedElements.value.includes(nucleus.id)) {
+              return selectedColorRGB;
+            }
+            if (colormap) {
+              return colormap(nucleus.details[colorByAttribute.value]);
+            }
+            return featureColorRGB;
+          });
           const styles = {
-            strokeColor: nuclei.value.map((nucleus) => {
-              if (selectedElements.value.includes(nucleus.id)) {
-                return selectedColorRGB;
-              }
-              if (colormap) {
-                return colormap(nucleus.details[colorByAttribute.value]);
-              }
-              return featureColorRGB;
-            })
+            strokeColor: nucleiColors.value
           };
           feature.updateStyleFromArray(styles, null, true);
         }
@@ -304,50 +316,54 @@ export default defineComponent({
     }
 
     function drawScatter() {
-      const canvas = document.getElementById('scatter-canvas')
-      if (canvas) {
-        const { width, height } = canvas.getBoundingClientRect();
-        scatterplot.value = createScatterplot({
-          canvas,
-          width,
-          height,
-          pointSize: 5,
-          pointScaleMode: 'constant',
-          lassoOnLongPress: true,
-        });
-        scatterplot.value.clear();
-        normalizedPoints.value = normalizePoints(nuclei.value.map((ellipse) => {
-          return ellipse.dimReductionPoint
-        }))
-        const drawPoints = normalizedPoints.value.map((p) => [
-          p.x, p.y,
-          selectedElements.value.length && selectedElements.value.includes(p.id) ? 1 : 0.2,
-        ])
-        const selectedIndexes = normalizedPoints.value.map((p, i) => {
-          if (selectedElements.value.includes(p.id)) return i
-          return undefined
-        }).filter((i) => i)
-        scatterplot.value.draw(drawPoints, {
-          select: selectedIndexes,
-        });
-        scatterplot.value.set({
-          opacityBy: 'valueA',
-          pointColor: featureColor.value,
-          pointSize: 6,
-        })
-        scatterplot.value.zoomToArea(
-          { x: 0, y: 0, width: 2, height: 2 },
-          { transition: true }
-        );
-        const updateSelectionFunction = ({ points }) => {
-          // regl-scatterplot returns point indexes
-          selectedElements.value = normalizedPoints.value.map((p, i) => {
-            if (points.includes(i)) return p.id
+      if (currentResult.value?.contents) {
+        const canvas = document.getElementById('scatter-canvas')
+        if (canvas) {
+          const { width, height } = canvas.getBoundingClientRect();
+          scatterplot.value = createScatterplot({
+            canvas,
+            width,
+            height,
+            pointSize: 5,
+            pointScaleMode: 'constant',
+            lassoOnLongPress: true,
+          });
+          scatterplot.value.clear();
+          normalizedPoints.value = normalizePoints(currentResult.value.contents);
+          const drawPoints = normalizedPoints.value.map((p) => [p.x, p.y, p.id])
+          const selectedIndexes = normalizedPoints.value.map((p, i) => {
+            if (selectedElements.value.includes(p.id)) return i
             return undefined
-          }).filter((id) => id);
+          }).filter((i) => i)
+          scatterplot.value.draw(drawPoints, {
+            select: selectedIndexes,
+          });
+          let colorset = nucleiColors.value;
+          if (!colorset || colorset.length < drawPoints.length) {
+            colorset = Array(drawPoints.length).fill(featureColor.value);
+          } else {
+            colorset = colorset.map((c) => rgbToHex(c));
+          }
+          scatterplot.value.set({
+            colorBy: 'valueA',
+            pointColor: colorset,
+            pointSize: 6,
+          })
+          scatterplot.value.zoomToArea(
+            { x: 0, y: 0, width: 2, height: 2 },
+            { transition: true }
+          );
+          const updateSelectionFunction = ({ points }) => {
+            // regl-scatterplot returns point indexes
+            selectedElements.value = normalizedPoints.value.map((p, i) => {
+              if (points.includes(i)) return p.id
+              return undefined
+            }).filter((id) => id);
+          }
+          scatterplot.value.subscribe('select', updateSelectionFunction)
+          scatterplot.value.subscribe('deselect', () => updateSelectionFunction({points: []}))
+          loadingScatter.value = false;
         }
-        scatterplot.value.subscribe('select', updateSelectionFunction)
-        scatterplot.value.subscribe('deselect', () => updateSelectionFunction({points: []}))
       }
     }
 
@@ -394,9 +410,6 @@ export default defineComponent({
         drawEllipses();
         updateNumVisible();
       }
-      if (openPanel.value === 'scatter') {
-        nextTick().then(drawScatter)
-      }
     });
 
     watch(showEllipses, updateEllipses);
@@ -420,8 +433,25 @@ export default defineComponent({
 
     watch(colormapName, updateEllipses)
 
+    watch(currentResult, async () => {
+      loadingScatter.value = true;
+      if (currentResult.value.contents) {
+        await nextTick()  // let canvas element appear
+      } else {
+        currentResult.value.contents = await fetchResult(currentResult.value);
+        availableResults.value = availableResults.value.map((result) => {
+          if (result.name === currentResult.value.name) {
+            return currentResult.value;
+          }
+          return result;
+        });
+      }
+      drawScatter();
+    })
+
     return {
       loading,
+      loadingScatter,
       treeData,
       openParents,
       activeImage,
@@ -437,6 +467,8 @@ export default defineComponent({
       colormapType,
       colormapName,
       colorbrewer,
+      availableResults,
+      currentResult,
       selectedElements,
       expandElementList,
       resetView,
@@ -561,6 +593,7 @@ export default defineComponent({
           <v-expansion-panel-title>
             Color
             <v-avatar
+              v-if="constantColor"
               :color="featureColor"
               size="small"
               class="color-preview"
@@ -597,7 +630,28 @@ export default defineComponent({
           value="scatter"
         >
           <v-expansion-panel-text>
-            <canvas id="scatter-canvas"></canvas>
+            <v-select
+              v-model="currentResult"
+              :items="availableResults"
+              label="Select Result"
+              item-title="name"
+              return-object
+            />
+            <v-table v-if="currentResult" density="compact">
+              <tbody>
+                <tr
+                  v-for="[key, value] in Object.entries(currentResult.metadata)"
+                  :key="key"
+                >
+                  <td>{{ key }}</td>
+                  <td>{{ value }}</td>
+                </tr>
+              </tbody>
+            </v-table>
+            <div v-if="loadingScatter" class="pa-3 text-center">
+              Loading Result Scatterplot...
+            </div>
+            <canvas v-if="currentResult" id="scatter-canvas"></canvas>
           </v-expansion-panel-text>
         </v-expansion-panel>
       </v-expansion-panels>
