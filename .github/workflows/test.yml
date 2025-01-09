@@ -32,9 +32,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip setuptools wheel pytest
           python -m pip install -r requirements.txt
-      - uses: hoverkraft-tech/compose-action@v2.0.1
-        with:
-          compose-file: atlascope_prototype/docker-compose.yml
+      - name: Start containers
+        working-directory: atlascope_prototype
+        run: docker compose up
       - name: Init Girder
         working-directory: atlascope_prototype
         run: |
@@ -43,3 +43,7 @@ jobs:
         run: |
           python -m pytest TCGA/tests/test_examples.py
           python -m pytest TCGA/tests/test_process_feature_vectors.py
+      - name: Stop containers
+        if: always()
+        working-directory: atlascope_prototype
+        run: docker compose stop
