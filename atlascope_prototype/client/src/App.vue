@@ -4,18 +4,19 @@ import VResizeDrawer from  '@wdns/vuetify-resize-drawer';
 import { VTreeview } from 'vuetify/labs/VTreeview';
 import geo from 'geojs';
 import createScatterplot from 'regl-scatterplot';
-
+import debounce from 'lodash/debounce';
+import colorbrewer from 'colorbrewer';
+import { createColorMap, linearScale } from "@colormap/core";
 
 import {
   getImageTileInfo,
   getImageTileUrl,
   listCollections,
-  listFolders,
+  listCollectionFolders,
+  listSubFolders,
   listItems,
-  listAnnotations,
-  getAnnotationContents,
 } from "./api";
-import { normalizePoints } from "./utils";
+import { fetchNuclei, fetchResult, normalizePoints, clamp, hexToRgb, rgbToHex } from "./utils";
 
 export default defineComponent({
   components: {
@@ -40,35 +41,51 @@ export default defineComponent({
     const center = ref();
     const zoom = ref(2);
     const maxZoom = ref();
-
-    // Annotations
-    const availableAnnotations = ref([]);
-    const annotationLayer = ref();
-    const showEllipses = ref(true);
-    const showFileUpload = ref(false);
-    const annotationFile = ref();
-    const currentAnnotation = ref();
-    const openPanel = ref([]);
-    const annotationColor = ref('#00ff00');
-    const selectedColor = ref('#0000ff');
+    const featureLayer = ref();
+    const uiLayer = ref();
+    const colorLegend = ref();
     const numVisible = ref(0);
-    const ellipses = ref([]);
+
+    // Data Structures
+    const nuclei = ref([]);
     const elementList = ref([]);
     const selectedElements = ref([]);
+
+    // Scatter
+    const availableResults = ref([]);
+    const currentResult = ref();
+    const loadingScatter = ref(false);
     const normalizedPoints = ref();
     const scatterplot = ref();
+
+    // Options
+    const showEllipses = ref(true);
+    const openPanel = ref([]);
+    const nucleiColors = ref();
+    const featureColor = ref('#00ff00');
+    const selectedColor = ref('#0000ff');
+    const constantColor = ref(true);
+    const colorByAttribute = ref();
+    const colormapType = ref();
+    const colormapName = ref();
 
     // Functions
     function updateChildren(root, parent_id, children) {
       children = children.map((child) => {
         if (child._modelType !== 'item') {
-          child.children=[];
+          child.children = [];
         }
         return child
       })
       if (root._id === parent_id) {
         root.children = children;
-      } else {
+        root.parquet = root.children.find((c) => c.name === root.name + '.parquet');
+        root.image = root.children.find((c) => c.name === root.name + '.svs');
+        root.results = root.children.filter((c) => c.name.match(`${root.name} (UMAP|TSNE) \\(\\d+\\).parquet`))
+        if (root.image) {
+          root.children = undefined;
+        }
+      } else if (root.children) {
         root.children = root.children.map(
           (child) => updateChildren(child, parent_id, children)
         )
@@ -83,10 +100,14 @@ export default defineComponent({
         loadFunc = () => listCollections()
       }
       else if (item._modelType == 'collection') {
-        loadFunc = () => listFolders(item._id)
+        loadFunc = () => listCollectionFolders(item._id)
       }
       else if (item._modelType == 'folder') {
-        loadFunc = () => listItems(item._id)
+        loadFunc = () => {
+          return Promise.all([listSubFolders(item._id), listItems(item._id)]).then(
+            ([folders, items]) => [...folders, ...items]
+          )
+        }
       }
       if (loadFunc) {
         return loadFunc().then((data) => {
@@ -99,51 +120,27 @@ export default defineComponent({
       }
     }
 
-    function submitAnnotationFile() {
-      if (annotationFile.value) {
-        loading.value = true;
-        elementList.value = [];
-        selectedElements.value = [];
-        currentAnnotation.value = undefined;
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          const contents = event.target.result;
-          if (contents) {
-            currentAnnotation.value = {
-              _id: undefined,
-              title: annotationFile.value.name,
-              subtitle: 'Uploaded file; not persistent in Girder',
-              elements: JSON.parse(contents).elements
-            }
-            availableAnnotations.value.push(currentAnnotation.value)
-            annotationFile.value = undefined;
-            showFileUpload.value = false;
-            loading.value = false;
-          }
-        }
-        reader.readAsText(annotationFile.value)
-      }
-    }
-
     function initView() {
-      loading.value = true;
       center.value = undefined;
       maxZoom.value = undefined;
       zoom.value = undefined;
       map.value = undefined;
-      annotationLayer.value = undefined;
+      featureLayer.value = undefined;
       if (activeImage.value?.length === 1) {
-        let image = activeImage.value[0]
-        listAnnotations(image._id).then((annotations) => {
-          availableAnnotations.value = annotations.map((a) => {
-            return {
-              _id: a._id,
-              title: a.annotation.name,
-              subtitle: a.annotation.description,
-              elements: [],
-            }
-          });
+        const caseFolder = activeImage.value[0];
+        loading.value = true;
+        fetchNuclei(caseFolder.parquet).then((data) => {
+          nuclei.value =  data;
+          loading.value = false;
         })
+        availableResults.value = caseFolder.results.map((result) => {
+          return {
+            _id: result._id,
+            name: result.name.replace(caseFolder.name, '').replace('.parquet', '').trim(),
+            metadata: result.meta,
+          }
+        });
+        const image = caseFolder.image;
         getImageTileInfo(image).then((info) => {
           maxZoom.value = info.levels - 1;
           let params = geo.util.pixelCoordinateParams(
@@ -154,17 +151,27 @@ export default defineComponent({
             info.tileHeight
           );
           map.value = geo.map(params.map);
-          map.value.geoOn(geo.event.pan, updateNumVisible)
-          map.value.geoOn(geo.event.zoom, updateNumVisible)
+          map.value.geoOn(geo.event.pan, debounce(updateNumVisible, 500))
           center.value = map.value.center();
           zoom.value = map.value.zoom();
           params.layer.url = getImageTileUrl(image);
           map.value.createLayer('osm', params.layer);
-          annotationLayer.value = map.value.createLayer('feature', {
+          featureLayer.value = map.value.createLayer('feature', {
             features: ['marker']
           });
+          uiLayer.value = map.value.createLayer('ui');
+          colorLegend.value = uiLayer.value.createWidget(
+            'colorLegend', {
+              position: {
+                bottom: 10,
+                left: 10,
+                right: 10,
+              },
+              ticks: 10,
+              width: 1000,
+            }
+          )
           map.value.draw();
-          // loading.value = false;
         })
       }
     }
@@ -175,50 +182,55 @@ export default defineComponent({
       }
     }
 
-    function updateEllipses() {
-      let elements = currentAnnotation.value?.elements;
-      if (elements) {
-        ellipses.value = elements.map((element) => {
-          const id = element.user?.id !== undefined ? element.user.id : -1;
-          return {
-            id,
-            title: `Element ${id}`,
-            details: [
-              {key: 'center', value: element.center},
-              {key: 'width', value: element.width},
-              {key: 'height', value: element.height},
-              {key: 'rotation', value: element.rotation},
-            ],
-            dimReductionPoint: {
-              id,
-              x: element.user?.x,
-              y: element.user?.y,
-            },
-            x: element.center[0],
-            y: element.center[1],
-            width: element.width,
-            height: element.height,
-            radius: Math.max(element.width, element.height),
-            rotation: element.width > element.height ? element.rotation : element.rotation + Math.PI / 2,
-            aspectRatio: Math.min(element.width, element.height) / Math.max(element.width, element.height),
-            opacity: selectedElements.value.includes(id) ? 1 : 0.2,
-            color: selectedElements.value.includes(id) ? selectedColor.value : annotationColor.value
-          }
-        })
+    function getColormap() {
+      if (colormapName.value && colorByAttribute.value) {
+        const allValues = [... new Set(
+          nuclei.value.map((nucleus) => nucleus.details[colorByAttribute.value])
+        )]
+        const numeric = !allValues.some((v) => typeof v === 'string');
+        const availableSets = colorbrewer[colormapName.value];
+        const availableSetLengths = Object.keys(availableSets).map((v) => parseInt(v))
+        const numColors = clamp(allValues.length, availableSetLengths)
+        const colors = availableSets[numColors].map((c) => hexToRgb(c));
+        let colormap = undefined;
+        let domain = undefined;
+        if (numeric) {
+          domain = [Math.min(...allValues), Math.max(...allValues)];
+          colormap = (v) => {
+            const [r, g, b] = createColorMap(
+              colors.map((c) => [c.r, c.g, c.b]),
+              linearScale(domain, [0, 1])
+            )(v);
+            return {r, g, b}
+          };
+        } else {
+          colormap = (v) => colors[clamp(allValues.indexOf(v), [0, numColors])]
+        }
+        colorLegend.value.categories([{
+          name: colorByAttribute.value,
+          type: allValues.length > numColors ? 'continuous' : 'discrete',
+          scale: numeric ? 'linear' : 'ordinal',
+          domain: numeric ? domain : allValues,
+          colors: colors.map((c) => rgbToHex(c))
+        }]);
+        return colormap;
       } else {
-        ellipses.value = []
+        colorLegend.value.categories([]);
+        return undefined;
       }
     }
 
     function drawEllipses() {
-      if (!annotationLayer.value) return;
+      if (!featureLayer.value) return;
       loading.value = true;
-      annotationLayer.value.clear()
-      if (ellipses.value.length && showEllipses.value) {
-        annotationLayer.value.createFeature('marker')
-        .data(ellipses.value)
-        .style({
-          strokeColor:  (item) => item.color,
+      featureLayer.value.clear()
+      if (nuclei.value.length) {
+        const feature = featureLayer.value.createFeature('marker')
+        .data(nuclei.value)
+        .geoOn(geo.event.feature.mouseclick, (e) => {
+          selectElement(e.data, e.sourceEvent)
+        });
+        feature.style({
           radius: (item) => item.width / (2 ** (maxZoom.value + 1)),
           rotation: (item) => item.rotation,
           symbolValue: (item) => item.aspectRatio,
@@ -230,14 +242,37 @@ export default defineComponent({
           strokeOpacity: 1,
           fillOpacity: 0,
         })
-        .geoOn(geo.event.feature.mousedown, (e) => {
-          selectElement(e.data, e.sourceEvent)
-        })
-        .draw()
+        updateEllipses();
+        feature.draw();
       } else {
-        annotationLayer.value.draw()
+        featureLayer.value.draw()
       }
       loading.value = false;
+    }
+
+    function updateEllipses() {
+      const feature = featureLayer.value?.features()[0];
+      if (feature) {
+        const colormap = getColormap();
+        feature.visible(showEllipses.value);
+        if (showEllipses.value) {
+          const featureColorRGB = hexToRgb(featureColor.value);
+          const selectedColorRGB = hexToRgb(selectedColor.value);
+          nucleiColors.value = nuclei.value.map((nucleus) => {
+            if (selectedElements.value.includes(nucleus.id)) {
+              return selectedColorRGB;
+            }
+            if (colormap) {
+              return colormap(nucleus.details[colorByAttribute.value]);
+            }
+            return featureColorRGB;
+          });
+          const styles = {
+            strokeColor: nucleiColors.value
+          };
+          feature.updateStyleFromArray(styles, null, true);
+        }
+      }
     }
 
     function flyToElement(element) {
@@ -247,16 +282,10 @@ export default defineComponent({
     }
 
     function updateNumVisible() {
-      if (ellipses.value.length && showEllipses.value) {
-        const {left, top, right, bottom} = map.value.camera().bounds
-        numVisible.value = ellipses.value.filter((ellipse) => {
-          return (
-            ellipse.x > left &&
-            ellipse.x < right &&
-            ellipse.y > -top &&
-            ellipse.y < -bottom
-          )
-        }).length
+      if (nuclei.value.length && showEllipses.value) {
+        const feature = featureLayer.value.features()[0];
+        const polySearch = feature.polygonSearch(map.value.corners());
+        numVisible.value = polySearch.found?.length;
       } else {
         numVisible.value = 0
       }
@@ -264,72 +293,77 @@ export default defineComponent({
 
     async function expandElementList({ done }) {
       // implementation complies with Vuetify's Infinite Scroll component API
-      if (!ellipses.value || elementList.value.length === ellipses.value.length) {
+      if (!nuclei.value || elementList.value.length === nuclei.value.length) {
         done('empty');
       } else {
-        if (ellipses.value) {
-          elementList.value = ellipses.value.slice(0, elementList.value.length + 10)
+        if (nuclei.value) {
+          elementList.value = nuclei.value.slice(0, elementList.value.length + 10)
         }
         done('ok');
       }
     }
 
     function selectElement(element, event) {
-      if (!event.modifiers.shift) selectedElements.value = []
       if (selectedElements.value.includes(element.id)) {
         selectedElements.value = selectedElements.value.filter((v) => v !== element.id)
-      } else {
+      } else if (event.modifiers.shift) {
         selectedElements.value = [
           ...selectedElements.value, element.id
         ]
+      } else {
+        selectedElements.value = [element.id];
       }
     }
 
     function drawScatter() {
-      const canvas = document.getElementById('scatter-canvas')
-      if (canvas) {
-        const { width, height } = canvas.getBoundingClientRect();
-        scatterplot.value = createScatterplot({
-          canvas,
-          width,
-          height,
-          pointSize: 5,
-          pointScaleMode: 'constant',
-          lassoOnLongPress: true,
-        });
-        scatterplot.value.clear();
-        normalizedPoints.value = normalizePoints(ellipses.value.map((ellipse) => {
-          return ellipse.dimReductionPoint
-        }))
-        const drawPoints = normalizedPoints.value.map((p) => [
-          p.x, p.y,
-          selectedElements.value.length && selectedElements.value.includes(p.id) ? 1 : 0.2,
-        ])
-        const selectedIndexes = normalizedPoints.value.map((p, i) => {
-          if (selectedElements.value.includes(p.id)) return i
-          return undefined
-        }).filter((i) => i)
-        scatterplot.value.draw(drawPoints, {
-          select: selectedIndexes,
-        });
-        scatterplot.value.set({
-          opacityBy: 'valueA',
-          pointColor: annotationColor.value,
-          pointSize: 6,
-        })
-        scatterplot.value.zoomToArea(
-          { x: 0, y: 0, width: 2, height: 2 },
-          { transition: true }
-        );
-        const updateSelectionFunction = ({ points }) => {
-          // regl-scatterplot returns point indexes
-          selectedElements.value = normalizedPoints.value.map((p, i) => {
-            if (points.includes(i)) return p.id
+      if (currentResult.value?.contents) {
+        const canvas = document.getElementById('scatter-canvas')
+        if (canvas) {
+          const { width, height } = canvas.getBoundingClientRect();
+          scatterplot.value = createScatterplot({
+            canvas,
+            width,
+            height,
+            pointSize: 5,
+            pointScaleMode: 'constant',
+            lassoOnLongPress: true,
+          });
+          scatterplot.value.clear();
+          normalizedPoints.value = normalizePoints(currentResult.value.contents);
+          const drawPoints = normalizedPoints.value.map((p) => [p.x, p.y, p.id])
+          const selectedIndexes = normalizedPoints.value.map((p, i) => {
+            if (selectedElements.value.includes(p.id)) return i
             return undefined
-          }).filter((id) => id);
+          }).filter((i) => i)
+          scatterplot.value.draw(drawPoints, {
+            select: selectedIndexes,
+          });
+          let colorset = nucleiColors.value;
+          if (!colorset || colorset.length < drawPoints.length) {
+            colorset = Array(drawPoints.length).fill(featureColor.value);
+          } else {
+            colorset = colorset.map((c) => rgbToHex(c));
+          }
+          scatterplot.value.set({
+            colorBy: 'valueA',
+            pointColor: colorset,
+            pointSize: 6,
+          })
+          scatterplot.value.zoomToArea(
+            { x: 0, y: 0, width: 2, height: 2 },
+            { transition: true }
+          );
+          const updateSelectionFunction = ({ points }) => {
+            // regl-scatterplot returns point indexes
+            selectedElements.value = normalizedPoints.value.map((p, i) => {
+              if (points.includes(i)) return p.id
+              return undefined
+            }).filter((id) => id);
+          }
+          scatterplot.value.subscribe('select', updateSelectionFunction)
+          scatterplot.value.subscribe('deselect', () => updateSelectionFunction({points: []}))
+          loadingScatter.value = false;
         }
-        scatterplot.value.subscribe('select', updateSelectionFunction)
-        scatterplot.value.subscribe('deselect', () => updateSelectionFunction({points: []}))
       }
     }
 
@@ -337,25 +371,27 @@ export default defineComponent({
     watch(openParents, () => {
       openParents.value.forEach((parent) => {
         if (!parent.children?.length) {
-          loadChildren(parent);
+          loadChildren(parent).then(() => {
+            // preemptively load 1 level below what's open
+            parent.children.forEach(loadChildren)
+          });
         }
       })
-    })
+    });
 
     watch(activeImage, () => {
-      showFileUpload.value = false;
-      annotationFile.value = undefined;
-      currentAnnotation.value = undefined;
-      elementList.value = [];
+      loading.value = false;
+      nuclei.value = [];
+      showEllipses.value = true;
       selectedElements.value = [];
       initView();
-    })
+    });
 
     watch(openPanel, () => {
       if (openPanel.value === 'scatter') {
         nextTick().then(drawScatter)
       }
-    })
+    });
 
     watch(selectedElements, () => {
       if (scatterplot.value) {
@@ -366,45 +402,73 @@ export default defineComponent({
         }).filter((i) => i)
         scatterplot.value.select(selectedIndexes, {preventEvent: true})
       }
-      updateEllipses()
+      updateEllipses();
+    });
+
+    watch(nuclei, () => {
+      if (nuclei.value?.length) {
+        drawEllipses();
+        updateNumVisible();
+      }
+    });
+
+    watch(showEllipses, updateEllipses);
+
+    watch(featureColor, debounce(updateEllipses, 1000));
+
+    watch(constantColor, () => {
+      colorByAttribute.value = undefined;
+      colormapType.value = undefined;
+      colormapName.value = undefined;
     })
 
-    watch(currentAnnotation, () => {
-      if (currentAnnotation.value?._id) {
-        loading.value = true;
-        getAnnotationContents(currentAnnotation.value._id).then((contents) => {
-          currentAnnotation.value.elements = contents.annotation.elements
-          loading.value = false;
-          updateEllipses();
-          updateNumVisible();
-        })
-      }
-      if (openPanel.value === 'scatter') {
-        nextTick().then(drawScatter)
-      }
+    watch(colorByAttribute, () => {
+      colormapType.value = undefined;
+      colormapName.value = undefined;
     })
 
-    watch(ellipses, drawEllipses)
+    watch(colormapType, () => {
+      colormapName.value = undefined;
+    })
 
-    watch(showEllipses, drawEllipses)
+    watch(colormapName, updateEllipses)
+
+    watch(currentResult, async () => {
+      loadingScatter.value = true;
+      if (currentResult.value.contents) {
+        await nextTick()  // let canvas element appear
+      } else {
+        currentResult.value.contents = await fetchResult(currentResult.value);
+        availableResults.value = availableResults.value.map((result) => {
+          if (result.name === currentResult.value.name) {
+            return currentResult.value;
+          }
+          return result;
+        });
+      }
+      drawScatter();
+    })
 
     return {
       loading,
+      loadingScatter,
       treeData,
       openParents,
       activeImage,
-      availableAnnotations,
-      showFileUpload,
+      nuclei,
       showEllipses,
-      ellipses,
-      numVisible,
-      annotationFile,
-      submitAnnotationFile,
-      currentAnnotation,
-      openPanel,
-      annotationColor,
-      selectedColor,
       elementList,
+      numVisible,
+      openPanel,
+      featureColor,
+      selectedColor,
+      constantColor,
+      colorByAttribute,
+      colormapType,
+      colormapName,
+      colorbrewer,
+      availableResults,
+      currentResult,
       selectedElements,
       expandElementList,
       resetView,
@@ -417,7 +481,6 @@ export default defineComponent({
 
 <template>
   <v-app>
-    <v-progress-linear v-if="loading" indeterminate />
     <VResizeDrawer name="left">
       <v-treeview
         v-model:opened="openParents"
@@ -439,11 +502,18 @@ export default defineComponent({
       </v-card-subtitle>
       <div id="map" style="height: 100%">
         <v-card
-          v-if="activeImage && currentAnnotation && ellipses.length"
+          v-if="loading"
           class="over-map pa-3"
           style="width: fit-content; right: 10px"
         >
-          {{ numVisible }} element{{ numVisible !== 1 ? "s" : "" }} visible
+          Loading Feature Vector Data...
+        </v-card>
+        <v-card
+          v-if="activeImage && nuclei.length"
+          class="over-map pa-3"
+          style="width: fit-content; right: 10px"
+        >
+          {{ numVisible }} {{ numVisible !== 1 ? "nuclei" : "nucleus" }} visible
         </v-card>
         <v-btn
           v-if="activeImage"
@@ -454,41 +524,24 @@ export default defineComponent({
         ></v-btn>
       </div>
     </v-main>
-    <VResizeDrawer
-      v-if="availableAnnotations.length"
-      location="right"
-      name="right"
-    >
-      <v-card-title class="pa-3">Annotation Options</v-card-title>
-      <v-select
-        v-model="currentAnnotation"
-        :items="availableAnnotations"
-        label="Current Annotation"
-        item-props
-        return-object
-        hide-details
-        class="px-3"
-      >
-        <template v-slot:append>
-          <v-icon icon="mdi-upload" @click="showFileUpload = true"></v-icon>
-        </template>
-      </v-select>
+    <VResizeDrawer v-if="nuclei.length" location="right" name="right">
+      <v-card-title class="pa-3">Nuclei Options</v-card-title>
       <v-switch
-        v-if="currentAnnotation"
+        v-if="nuclei.length"
         v-model="showEllipses"
         label="Show Ellipses"
         class="my-0 px-6"
         hide-details
       />
       <v-expansion-panels
-        v-if="currentAnnotation"
+        v-if="nuclei.length"
         v-model="openPanel"
         class="pl-6 pr-3"
         variant="accordion"
       >
         <v-expansion-panel value="elements">
           <v-expansion-panel-title>
-            {{ currentAnnotation.elements.length }} annotation elements
+            {{ nuclei.length }} nuclei
           </v-expansion-panel-title>
           <v-expansion-panel-text class="py-0">
             <v-infinite-scroll
@@ -523,8 +576,11 @@ export default defineComponent({
                       {{ element.title }}
                     </v-expansion-panel-title>
                     <v-expansion-panel-text>
-                      <p v-for="detail in element.details" :key="detail.key">
-                        {{ detail.key }}: {{ detail.value }}
+                      <p
+                        v-for="detail in Object.entries(element.details)"
+                        :key="detail.key"
+                      >
+                        {{ detail[0] }}: {{ detail[1] }}
                       </p>
                     </v-expansion-panel-text>
                   </v-expansion-panel>
@@ -537,13 +593,36 @@ export default defineComponent({
           <v-expansion-panel-title>
             Color
             <v-avatar
-              :color="annotationColor"
+              v-if="constantColor"
+              :color="featureColor"
               size="small"
               class="color-preview"
             />
           </v-expansion-panel-title>
           <v-expansion-panel-text>
-            <v-color-picker v-model="annotationColor"></v-color-picker>
+            <v-switch v-model="constantColor" label="Constant Color" />
+            <v-color-picker
+              v-model="featureColor"
+              v-if="constantColor"
+            ></v-color-picker>
+            <v-select
+              v-model="colorByAttribute"
+              :items="Object.keys(nuclei[0].details)"
+              label="Color By Attribute"
+              :list-props="{ maxWidth: '300px' }"
+            />
+            <v-select
+              v-model="colormapType"
+              v-if="colorByAttribute"
+              :items="['sequential', 'singlehue', 'diverging', 'qualitative']"
+              label="Colormap Type"
+            ></v-select>
+            <v-select
+              v-model="colormapName"
+              v-if="colormapType"
+              :items="colorbrewer.schemeGroups[colormapType]"
+              label="Colormap Name"
+            ></v-select>
           </v-expansion-panel-text>
         </v-expansion-panel>
         <v-expansion-panel
@@ -551,33 +630,32 @@ export default defineComponent({
           value="scatter"
         >
           <v-expansion-panel-text>
-            <canvas id="scatter-canvas"></canvas>
+            <v-select
+              v-model="currentResult"
+              :items="availableResults"
+              label="Select Result"
+              item-title="name"
+              return-object
+            />
+            <v-table v-if="currentResult" density="compact">
+              <tbody>
+                <tr
+                  v-for="[key, value] in Object.entries(currentResult.metadata)"
+                  :key="key"
+                >
+                  <td>{{ key }}</td>
+                  <td>{{ value }}</td>
+                </tr>
+              </tbody>
+            </v-table>
+            <div v-if="loadingScatter" class="pa-3 text-center">
+              Loading Result Scatterplot...
+            </div>
+            <canvas v-if="currentResult" id="scatter-canvas"></canvas>
           </v-expansion-panel-text>
         </v-expansion-panel>
       </v-expansion-panels>
     </VResizeDrawer>
-    <v-dialog v-model="showFileUpload" width="500">
-      <v-card class="pa-3">
-        <v-btn
-          flat
-          icon="mdi-close"
-          style="position: absolute; right: 5px"
-          @click="showFileUpload = false"
-        ></v-btn>
-        <v-card-title>Upload Annotation File</v-card-title>
-        <v-file-input
-          v-model="annotationFile"
-          accept=".json"
-          label="Annotation File"
-          show-size
-        ></v-file-input>
-        <v-card-actions>
-          <v-btn @click="showFileUpload = false" color="red">Cancel</v-btn>
-          <v-btn @click="submitAnnotationFile">Submit</v-btn>
-        </v-card-actions>
-        <v-progress-linear v-if="loading" indeterminate />
-      </v-card>
-    </v-dialog>
   </v-app>
 </template>
 

@@ -34,7 +34,7 @@ jobs:
           python -m pip install -r requirements.txt
       - name: Start containers
         working-directory: atlascope_prototype
-        run: docker compose up -d
+        run: docker compose --profile test up -d
       - name: Init Girder
         working-directory: atlascope_prototype
         run: |

@@ -17,6 +17,8 @@ services:
   #     - DB_URL=postgresql://admin:adminpass@localhost:5432/atlascope
   #   network_mode: host
   client:
+    profiles:
+      - ''
     build:
       context: .
       dockerfile: ./docker/client.Dockerfile
@@ -28,11 +30,17 @@ services:
     ports:
       - 8080:8080
   mongodb:
+    profiles:
+      - ''
+      - 'test'
     image: mongo:4.4
     volumes:
       - "/data/db"
     network_mode: host
   girder:
+    profiles:
+      - ''
+      - 'test'
     build:
       context: .
       dockerfile: ./docker/girder.Dockerfile

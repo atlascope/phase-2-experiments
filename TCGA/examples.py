@@ -1,5 +1,4 @@
 import argparse
-import getpass
 import json
 import sys
 from datetime import datetime
@@ -9,6 +8,8 @@ import girder_client
 import requests
 
 from .constants import CONF, DOWNLOADS_FOLDER
+from .read_vectors import get_case_vector
+from .client import get_client, get_case_folder_item, sync_file
 
 
 def download_examples(cases):
@@ -25,71 +26,34 @@ def download_examples(cases):
     start = datetime.now()
     client = girder_client.GirderClient(apiUrl=api_root)
 
-    for case_folder in client.listFolder(folder_id):
-        case_name = case_folder.get('name')
+    for case_folder_item in client.listFolder(folder_id):
+        case_name = case_folder_item.get('name')
         if (cases is None and 'test' not in case_name) or (cases is not None and case_name in cases):
             print(f'Downloading {case_name}.')
-            client.downloadFolderRecursive(case_folder.get('_id'), DOWNLOADS_FOLDER / case_name)
+            client.downloadFolderRecursive(case_folder_item.get('_id'), DOWNLOADS_FOLDER / case_name)
 
     print(f'Completed download in {datetime.now() - start} seconds.')
 
 
-def upload_images(cases, username=None, password=None):
-    target_server = CONF.get('target_server', {})
-    girder_api_root = target_server.get('api_root')
-
-    if username is None:
-        username = input('Girder Username: ')
-    if password is None:
-        password = getpass.getpass('Girder Password: ')
-
-    if not girder_api_root:
-        raise ValueError(
-            "Configuration file must specify target_server.api_root"
-        )
-
-    print(f'Uploading images to {girder_api_root}...')
+def upload_examples(cases, username=None, password=None):
+    print(f'Uploading examples...')
     start = datetime.now()
-    client = girder_client.GirderClient(apiUrl=girder_api_root)
-    client.authenticate(username, password)
+    client = get_client(username, password)
 
-    collection = list(client.listCollection())
-    if len(collection) == 0:
-        collection = client.createCollection('TCGA', public=True)
-    else:
-        collection = collection[0]
-
-    folder = client.createFolder(
-        collection.get('_id'),
-        'Examples',
-        parentType='collection',
-        public=True,
-        reuseExisting=True,
-    )
-
-    for case in DOWNLOADS_FOLDER.glob('*'):
-        case_name = case.name.split('.')[0]
+    for case_folder in DOWNLOADS_FOLDER.glob('*'):
+        case_name = case_folder.name
         if (cases is None and 'test' not in case_name) or (cases is not None and case_name in cases):
-            for image in case.glob('*'):
-                if image.is_file():
-                    print(f'Uploading image for {case_name}.')
-                    with open(image) as f:
-                        item = client.createItem(
-                            folder.get('_id'),
-                            case.name,
-                            reuseExisting=True,
-                        )
-                        item_id = item.get('_id')
-                        client.addMetadataToItem(item_id, {
-                            'project': 'Atlascope'
-                        })
-                        file_id, current = client.isFileCurrent(item_id, image.name, str(image))
-                        if not current:
-                            file_obj = client.uploadFileToItem(item_id, str(image))
-
-    # create large images for all items in folder
-    client.put(f'/large_image/folder/{folder.get("_id")}/tiles?recurse=true')
-
+            case_folder_item = get_case_folder_item(client, case_name)
+            image_path = case_folder / (f'{case_name}.svs' if case_name != 'test' else 'tcgaextract_rgb.tiff')
+            if image_path.exists():
+                parquet_path = case_folder / f'{case_name}.parquet'
+                if not parquet_path.exists():
+                    print('Generating parquet file of vector data...')
+                    vector = get_case_vector(case_name=case_name)
+                    vector.to_parquet(parquet_path)
+                print(f'Uploading image and parquet file for {case_name}.')
+                sync_file(client, case_folder_item, image_path)
+                sync_file(client, case_folder_item, parquet_path)
     print(f'Completed upload in {datetime.now() - start} seconds.')
 
 
@@ -118,7 +82,7 @@ def main(raw_args=None):
     )
 
     if command == 'upload':
-        upload_images(cases, username=username, password=password)
+        upload_examples(cases, username=username, password=password)
     elif command == 'download':
         download_examples(cases)
 
