@@ -44,7 +44,7 @@ def upload_examples(cases, username=None, password=None):
         case_name = case_folder.name
         if (cases is None and 'test' not in case_name) or (cases is not None and case_name in cases):
             case_folder_item = get_case_folder_item(client, case_name)
-            image_path = case_folder / f'{case_name}.svs'
+            image_path = case_folder / (f'{case_name}.svs' if case_name != 'test' else 'tcgaextract_rgb.tiff')
             if image_path.exists():
                 parquet_path = case_folder / f'{case_name}.parquet'
                 if not parquet_path.exists():
