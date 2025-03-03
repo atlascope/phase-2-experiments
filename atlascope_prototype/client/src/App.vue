@@ -16,7 +16,7 @@ import {
   listSubFolders,
   listItems,
 } from "./api";
-import { fetchNuclei, fetchResult, normalizePoints, clamp, hexToRgb, rgbToHex } from "./utils";
+import { fetchNuclei, fetchResult, normalizePoints, clamp, hexToRgb, rgbToHex, fetchParquetData } from "./utils";
 
 export default defineComponent({
   components: {
@@ -35,6 +35,7 @@ export default defineComponent({
     }]);
     const openParents = ref([]);
     const activeImage = ref();
+    const groupDatas = ref({});
 
     // Map
     const map = ref(null);
@@ -65,6 +66,8 @@ export default defineComponent({
     const featureColor = ref('#00ff00');
     const selectedColor = ref('#0000ff');
     const constantColor = ref(true);
+    const colorByGroups = ref([]);
+    const colorByGroup = ref('basic');
     const colorByAttribute = ref();
     const colormapType = ref();
     const colormapName = ref();
@@ -79,8 +82,8 @@ export default defineComponent({
       })
       if (root._id === parent_id) {
         root.children = children;
-        root.parquet = root.children.find((c) => c.name === root.name + '.parquet');
-        root.image = root.children.find((c) => c.name === root.name + '.svs');
+        root.parquets = root.children.filter((c) => c.name.match('([a-z]+).parquet'));
+        root.image = root.children.find((c) => c.name.match('(.+).svs'));
         root.results = root.children.filter((c) => c.name.match(`${root.name} (UMAP|TSNE) \\(\\d+\\).parquet`))
         if (root.image) {
           root.children = undefined;
@@ -129,10 +132,15 @@ export default defineComponent({
       if (activeImage.value?.length === 1) {
         const caseFolder = activeImage.value[0];
         loading.value = true;
-        fetchNuclei(caseFolder.parquet).then((data) => {
-          nuclei.value =  data;
-          loading.value = false;
-        })
+        colorByGroups.value = caseFolder.parquets.map((c) => c.name.replace('.parquet', ''))
+        const basicParquet = caseFolder.parquets.find((c) => c.name.match('basic.parquet'))
+        if (basicParquet) {
+          fetchNuclei(basicParquet).then((data) => {
+            groupDatas.value['basic'] = data;
+            nuclei.value = data;
+            loading.value = false;
+          })
+        }
         availableResults.value = caseFolder.results.map((result) => {
           return {
             _id: result._id,
@@ -184,8 +192,9 @@ export default defineComponent({
 
     function getColormap() {
       if (colormapName.value && colorByAttribute.value) {
+        const group = groupDatas.value[colorByGroup.value]
         const allValues = [... new Set(
-          nuclei.value.map((nucleus) => nucleus.details[colorByAttribute.value])
+          group.map((nucleus) => nucleus[colorByAttribute.value])
         )]
         const numeric = !allValues.some((v) => typeof v === 'string');
         const availableSets = colorbrewer[colormapName.value];
@@ -258,19 +267,22 @@ export default defineComponent({
         if (showEllipses.value) {
           const featureColorRGB = hexToRgb(featureColor.value);
           const selectedColorRGB = hexToRgb(selectedColor.value);
-          nucleiColors.value = nuclei.value.map((nucleus) => {
-            if (selectedElements.value.includes(nucleus.id)) {
-              return selectedColorRGB;
-            }
-            if (colormap) {
-              return colormap(nucleus.details[colorByAttribute.value]);
-            }
-            return featureColorRGB;
-          });
-          const styles = {
-            strokeColor: nucleiColors.value
-          };
-          feature.updateStyleFromArray(styles, null, true);
+          const group = groupDatas.value[colorByGroup.value];
+          if (group) {
+            nucleiColors.value = nuclei.value.map((nucleus, index) => {
+              if (selectedElements.value.includes(nucleus.id)) {
+                return selectedColorRGB;
+              }
+              if (colormap) {
+                return colormap(group[index][colorByAttribute.value]);
+              }
+              return featureColorRGB;
+            });
+            const styles = {
+              strokeColor: nucleiColors.value
+            };
+            feature.updateStyleFromArray(styles, null, true);
+          }
         }
       }
     }
@@ -422,6 +434,21 @@ export default defineComponent({
       colormapName.value = undefined;
     })
 
+    watch(colorByGroup, () => {
+      if (
+        !groupDatas.value[colorByGroup.value] &&
+        activeImage.value?.length === 1
+      ) {
+        const caseFolder = activeImage.value[0];
+        const parquet = caseFolder.parquets.find((c) => c.name.match(
+          colorByGroup.value + '.parquet'
+        ));
+        fetchParquetData(parquet).then((data) => {
+          groupDatas.value[colorByGroup.value] = data;
+        })
+      }
+    })
+
     watch(colorByAttribute, () => {
       colormapType.value = undefined;
       colormapName.value = undefined;
@@ -455,6 +482,7 @@ export default defineComponent({
       treeData,
       openParents,
       activeImage,
+      groupDatas,
       nuclei,
       showEllipses,
       elementList,
@@ -463,6 +491,8 @@ export default defineComponent({
       featureColor,
       selectedColor,
       constantColor,
+      colorByGroups,
+      colorByGroup,
       colorByAttribute,
       colormapType,
       colormapName,
@@ -577,7 +607,7 @@ export default defineComponent({
                     </v-expansion-panel-title>
                     <v-expansion-panel-text>
                       <p
-                        v-for="detail in Object.entries(element.details)"
+                        v-for="detail in Object.entries(element)"
                         :key="detail.key"
                       >
                         {{ detail[0] }}: {{ detail[1] }}
@@ -602,27 +632,47 @@ export default defineComponent({
           <v-expansion-panel-text>
             <v-switch v-model="constantColor" label="Constant Color" />
             <v-color-picker
-              v-model="featureColor"
               v-if="constantColor"
+              v-model="featureColor"
+              width="250"
             ></v-color-picker>
-            <v-select
-              v-model="colorByAttribute"
-              :items="Object.keys(nuclei[0].details)"
-              label="Color By Attribute"
-              :list-props="{ maxWidth: '300px' }"
-            />
-            <v-select
-              v-model="colormapType"
-              v-if="colorByAttribute"
-              :items="['sequential', 'singlehue', 'diverging', 'qualitative']"
-              label="Colormap Type"
-            ></v-select>
-            <v-select
-              v-model="colormapName"
-              v-if="colormapType"
-              :items="colorbrewer.schemeGroups[colormapType]"
-              label="Colormap Name"
-            ></v-select>
+            <div v-else>
+              <v-select
+                v-if="colorByGroups.length"
+                v-model="colorByGroup"
+                :items="colorByGroups"
+                label="Attribute Group"
+                :list-props="{ maxWidth: '300px' }"
+              />
+              <div v-if="groupDatas[colorByGroup]?.length">
+                <v-select
+                  v-model="colorByAttribute"
+                  :items="Object.keys(groupDatas[colorByGroup][0])"
+                  label="Color By Attribute"
+                  :list-props="{ maxWidth: '300px' }"
+                />
+                <v-select
+                  v-if="colorByAttribute"
+                  v-model="colormapType"
+                  :items="[
+                    'sequential',
+                    'singlehue',
+                    'diverging',
+                    'qualitative',
+                  ]"
+                  label="Colormap Type"
+                ></v-select>
+                <v-select
+                  v-if="colormapType"
+                  v-model="colormapName"
+                  :items="colorbrewer.schemeGroups[colormapType]"
+                  label="Colormap Name"
+                ></v-select>
+              </div>
+              <span v-else class="pb-2">
+                Fetching {{ colorByGroup }} data...
+              </span>
+            </div>
           </v-expansion-panel-text>
         </v-expansion-panel>
         <v-expansion-panel

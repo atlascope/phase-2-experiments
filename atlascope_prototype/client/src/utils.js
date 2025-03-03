@@ -1,9 +1,9 @@
 import { listItemFiles, getItemFileUrl } from "./api";
 import { asyncBufferFromUrl, parquetRead } from "hyparquet";
 
-export async function fetchNuclei(parquetItem) {
+export async function fetchParquetData(parquetItem) {
   const start = new Date();
-  let nuclei = undefined;
+  let data = undefined;
   if (parquetItem) {
     const files = await listItemFiles(parquetItem._id);
     if (files && files.length) {
@@ -11,76 +11,55 @@ export async function fetchNuclei(parquetItem) {
       await parquetRead({
         file: await asyncBufferFromUrl({ url }),
         rowFormat: "object",
-        onComplete: (data) => {
-          nuclei = data.map((row, id) => {
-            const roi = {};
-            row.roiname
-              .split("_")
-              .slice(2)
-              .forEach((component) => {
-                let [key, value] = component.split("-");
-                roi[key] = parseInt(value);
-              });
-            const x = row["Unconstrained.Identifier.CentroidX"] * 2 + roi.left;
-            const y = row["Unconstrained.Identifier.CentroidY"] * 2 + roi.top;
-            const width = row["Size.MinorAxisLength"] * 2;
-            const height = row["Size.MajorAxisLength"] * 2;
-            const rotation = 0 - row["Orientation.Orientation"];
-            return {
-              id,
-              title: `Element ${id}`,
-              details: row,
-              x,
-              y,
-              width,
-              height,
-              radius: Math.max(width, height),
-              rotation: width > height ? rotation : rotation + Math.PI / 2,
-              aspectRatio: Math.min(width, height) / Math.max(width, height),
-            };
-          });
+        onComplete: (d) => {
+          data = d;
         },
       });
     }
   }
   const end = new Date();
-  console.log(
-    "Retrieved feature vector data in ",
-    (end - start) / 1000,
-    " seconds."
-  );
-  return nuclei;
+  console.log("Retrieved parquet data in ", (end - start) / 1000, " seconds.");
+  return data;
+}
+
+export async function fetchNuclei(parquetItem) {
+  const data = await fetchParquetData(parquetItem);
+  return data.map((row, id) => {
+    const roi = {};
+    row.roiname
+      .split("_")
+      .slice(2)
+      .forEach((component) => {
+        let [key, value] = component.split("-");
+        roi[key] = parseInt(value);
+      });
+    const x = row["Identifier.CentroidX"] * 2 + roi.left;
+    const y = row["Identifier.CentroidY"] * 2 + roi.top;
+    const width = row["Size.MinorAxisLength"] * 2;
+    const height = row["Size.MajorAxisLength"] * 2;
+    const rotation = 0 - row["Orientation.Orientation"];
+    return {
+      ...row,
+      id,
+      title: `Element ${id}`,
+      x,
+      y,
+      width,
+      height,
+      radius: Math.max(width, height),
+      rotation: width > height ? rotation : rotation + Math.PI / 2,
+      aspectRatio: Math.min(width, height) / Math.max(width, height),
+    };
+  });
 }
 
 export async function fetchResult(parquetItem) {
-  const start = new Date();
-  let result = [];
-
-  if (parquetItem) {
-    const files = await listItemFiles(parquetItem._id);
-    if (files && files.length) {
-      const url = getItemFileUrl(files[0]._id);
-      await parquetRead({
-        file: await asyncBufferFromUrl({ url }),
-        rowFormat: "object",
-        onComplete: (data) => {
-          result = data.map((row, index) => ({
-            id: index,
-            x: row.x,
-            y: row.y,
-          }));
-        },
-      });
-    }
-  }
-
-  const end = new Date();
-  console.log(
-    "Retrieved dimensionality reduction result data in ",
-    (end - start) / 1000,
-    " seconds."
-  );
-  return result;
+  const data = await fetchParquetData(parquetItem);
+  return data.map((row, index) => ({
+    id: index,
+    x: row.x,
+    y: row.y,
+  }));
 }
 
 // regl-scatterplot requires points to be normalized for performance
