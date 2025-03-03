@@ -26,10 +26,21 @@ def test_case_upload():
     )
     expected_output = [
         'Uploading examples...',
-        'Generating parquet file of vector data...',
+        'Uploading image for test.',
         'Reading features in 3 region\(s\).',
         'Found 3586 features.',
-        'Uploading image and parquet file for test.',
+        'Generating parquet file of classification data...',
+        'Uploading classification parquet file.',
+        'Generating parquet file of unconstrained data...',
+        'Uploading unconstrained parquet file.',
+        'Generating parquet file of shape data...',
+        'Uploading shape parquet file.',
+        'Generating parquet file of nucleus data...',
+        'Uploading nucleus parquet file.',
+        'Generating parquet file of cytoplasm data...',
+        'Uploading cytoplasm parquet file.',
+        'Generating parquet file of basic data...',
+        'Uploading basic parquet file.',
         'Completed upload in ([\d:.]*) seconds.'
     ]
     compare_outputs(output, expected_output)
