@@ -6,10 +6,14 @@ ANNOTATIONS_FOLDER = Path(__file__).parent / 'annotations'
 REDUCE_DIMS_RESULTS_FOLDER = Path(__file__).parent / 'reduce_dims_results'
 PLOTS_FOLDER = REDUCE_DIMS_RESULTS_FOLDER / 'plots'
 COLUMN_NAMES_FILE = Path(__file__).parent / 'column_names.json'
+COLUMN_GROUPS_FILE = Path(__file__).parent / 'column_groups.json'
 CLASS_PREFIX = 'Unconstrained.ClassifProbab.'
 
 with open(COLUMN_NAMES_FILE) as f:
     COLUMN_NAMES = json.load(f)
+
+with open(COLUMN_GROUPS_FILE) as f:
+    COLUMN_GROUPS = json.load(f)
 
 with open('conf.json') as f:
     CONF = json.load(f)

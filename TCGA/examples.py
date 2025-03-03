@@ -7,7 +7,7 @@ from pathlib import Path
 import girder_client
 import requests
 
-from .constants import CONF, DOWNLOADS_FOLDER
+from .constants import CONF, DOWNLOADS_FOLDER, COLUMN_GROUPS
 from .read_vectors import get_case_vector
 from .client import get_client, get_case_folder_item, sync_file
 
@@ -44,16 +44,28 @@ def upload_examples(cases, username=None, password=None):
         case_name = case_folder.name
         if (cases is None and 'test' not in case_name) or (cases is not None and case_name in cases):
             case_folder_item = get_case_folder_item(client, case_name)
-            image_path = case_folder / (f'{case_name}.svs' if case_name != 'test' else 'tcgaextract_rgb.tiff')
-            if image_path.exists():
-                parquet_path = case_folder / f'{case_name}.parquet'
-                if not parquet_path.exists():
-                    print('Generating parquet file of vector data...')
-                    vector = get_case_vector(case_name=case_name)
-                    vector.to_parquet(parquet_path)
-                print(f'Uploading image and parquet file for {case_name}.')
+            if case_name == 'test':
+                image_path = next(case_folder.glob('tcgaextract_rgb.tiff'), None)
+            else:
+                image_path = next(case_folder.glob('*.svs'), None)
+            if image_path is not None and image_path.exists():
+                print(f'Uploading image for {case_name}.')
                 sync_file(client, case_folder_item, image_path)
-                sync_file(client, case_folder_item, parquet_path)
+
+                parquet_folder = case_folder / 'parquet'
+                parquet_folder.mkdir(parents=True, exist_ok=True)
+                vector = None
+                for group_name, cols in COLUMN_GROUPS.items():
+                    group_parquet_file = (parquet_folder / f'{group_name}.parquet')
+                    if not group_parquet_file.exists():
+                        if vector is None:
+                            vector = get_case_vector(case_name=case_name)
+                        print(f'\tGenerating parquet file of {group_name} data...')
+                        group_vector = vector[cols]
+                        group_vector.to_parquet(group_parquet_file)
+                        print(f'Uploading {group_name} parquet file.')
+                        sync_file(client, case_folder_item, group_parquet_file)
+
     print(f'Completed upload in {datetime.now() - start} seconds.')
 
 
