@@ -260,6 +260,7 @@ export default defineComponent({
     }
 
     function updateEllipses() {
+      if (!featureLayer.value) return
       const feature = featureLayer.value?.features()[0];
       if (feature) {
         const colormap = getColormap();
