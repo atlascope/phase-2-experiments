@@ -1,13 +1,18 @@
-import pandas as pd
-import umap
+import io
 import json
-
-import numpy as np
-import plotly.express as px
-from sklearn.preprocessing import normalize
 from datetime import datetime
 from pathlib import Path
 
+import ipywidgets
+import large_image
+import numpy as np
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+import umap
+from IPython.display import display
+from PIL import Image
+from sklearn.preprocessing import normalize
 
 # from https://umap-learn.readthedocs.io/en/latest/api.html
 DEFAULT_UMAP_KWARGS = dict(
@@ -58,7 +63,7 @@ class UMAPManager():
         self._data_path = Path(data_path)
         self._result_path = Path(result_path)
         self._result_path.mkdir(exist_ok=True, parents=True)
-        self._data = None
+        self._data = self._image_path = self._image = None
         self._umap_kwargs = DEFAULT_UMAP_KWARGS
         self._exclude_columns = []
         if data_path is not None:
@@ -101,12 +106,19 @@ class UMAPManager():
     def columns(self):
         return self._data.columns
 
+    @property
+    def image(self):
+        return self._image
+
     def reset(self):
         self._umap_kwargs = DEFAULT_UMAP_KWARGS
         self._exclude_columns = []
 
     def read_data(self, data_path):
         print('Reading HIPS data.')
+        self._image_path = next(data_path.glob('*.svs'))
+        if self._image_path:
+            self._image = large_image.open(self._image_path)
         meta_vector_files = list((data_path / 'nucleiMeta').glob('*.csv'))
         prop_vector_files = list((data_path / 'nucleiProps').glob('*.csv'))
         for meta_vector_file in meta_vector_files:
@@ -165,8 +177,51 @@ class UMAPManager():
                 ), f)
         if plot:
             data = pd.DataFrame(output_data, columns=['x', 'y'])
-            px.scatter(data, x='x', y='y', color=data.index).show()
+            scatter = go.Scatter(
+                x=data['x'],
+                y=data['y'],
+                mode='markers',
+                marker=dict(color=data.index)
+            )
+            figure = go.FigureWidget(data=[scatter])
+            cell_view = ipywidgets.VBox()
+
+            def selection_callback(trace, points, selector):
+                thumbnails = self.show_cell_thumbnails(trace.selectedpoints)
+                cell_view.children = [
+                    thumbnails
+                ]
+
+            figure.data[0].on_selection(selection_callback)
+            display(figure)
+            display(cell_view)
         return output_data
+
+    def get_cell_thumbnails(self, cell_indexes):
+        thumbnails = []
+        for i, index in enumerate(cell_indexes):
+            cell = self._data.iloc[index]
+            scale_multiplier = 2
+            margin = 10
+            region = dict(
+                left=max(int(cell['Identifier.Xmin']) * scale_multiplier - margin, 0),
+                right=int(cell['Identifier.Xmax']) * scale_multiplier + margin,
+                top=max(int(cell['Identifier.Ymin']) * scale_multiplier - margin, 0),
+                bottom=int(cell['Identifier.Ymax']) * scale_multiplier + margin,
+            )
+            thumbnail, _ = self.image.getRegion(region=region, format='numpy')
+            thumbnails.append(thumbnail)
+        return thumbnails
+
+    def show_cell_thumbnails(self, cell_indexes):
+        thumbnails = self.get_cell_thumbnails(cell_indexes)
+        children = []
+        for thumbnail in thumbnails:
+            f = io.BytesIO()
+            im = Image.fromarray(thumbnail, 'RGB')
+            im.save(f, 'png')
+            children.append(ipywidgets.Image(value=f.getvalue(), format='png'))
+        return ipywidgets.GridBox(children, layout=ipywidgets.Layout(grid_template_columns="repeat(10, 100px)"))
 
     def compare_reductions(self, **reductions):
         data = None

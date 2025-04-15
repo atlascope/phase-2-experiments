@@ -1,0 +1,7 @@
+jupyter
+ipywidgets==7.7.2
+large_image[tifffile]
+pandas
+plotly
+umap-learn
+anywidget
