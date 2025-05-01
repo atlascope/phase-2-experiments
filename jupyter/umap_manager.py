@@ -66,6 +66,7 @@ class UMAPManager():
         self._data = self._image_path = self._image = None
         self._umap_kwargs = DEFAULT_UMAP_KWARGS
         self._exclude_columns = []
+        self._sample = None
         if data_path is not None:
             self.read_data(data_path)
 
@@ -91,16 +92,18 @@ class UMAPManager():
 
     @property
     def data(self):
-        data = self._data
+        data = self._sample if self._sample is not None else self._data
         # drop excluded / non-numeric columns
         data = data.drop([
             c for c in data.columns
             if c in self.exclude_columns or
             str(data[c].dtype) != 'float64'
         ], axis=1).fillna(-1)
-        # normalize
-        normalize(data, axis=1, norm='l1')
         return data
+
+    @property
+    def normalized_data(self):
+        return normalize(self.data, axis=1, norm='l1')
 
     @property
     def columns(self):
@@ -113,6 +116,10 @@ class UMAPManager():
     def reset(self):
         self._umap_kwargs = DEFAULT_UMAP_KWARGS
         self._exclude_columns = []
+        self._sample = None
+
+    def sample(self, n):
+        self._sample = self._data.sample(n)
 
     def read_data(self, data_path):
         print('Reading HIPS data.')
@@ -153,7 +160,7 @@ class UMAPManager():
                 existing_result = json.load(f)
                 if (
                     existing_result.get('umap_kwargs') == self._umap_kwargs and
-                    existing_result.get('input_data') == self.data.to_numpy().tolist()
+                    existing_result.get('input_data') == self.normalized_data.tolist()
                 ):
                     return np.array(existing_result.get('output_data'))
 
@@ -167,7 +174,7 @@ class UMAPManager():
             filename = datetime.now().strftime("%Y_%m_%d_%H_%M_%S_%f") + '.json'
             result_filepath = self._result_path / filename
             fit = umap.UMAP(**self._umap_kwargs)
-            input_data = self.data.to_numpy()
+            input_data = self.normalized_data
             output_data = fit.fit_transform(input_data)
             with open(result_filepath, 'w') as f:
                 json.dump(dict(
@@ -209,6 +216,13 @@ class UMAPManager():
                 top=max(int(cell['Identifier.Ymin']) * scale_multiplier - margin, 0),
                 bottom=int(cell['Identifier.Ymax']) * scale_multiplier + margin,
             )
+            if len(self._data['roiname'].unique()) > 1:
+                roi_split = cell['roiname'].split('_')[2:]
+                roi_region = {s.split('-')[0]: int(s.split('-')[1]) for s in roi_split}
+                region['left'] += roi_region['left']
+                region['right'] += roi_region['left']
+                region['top'] += roi_region['top']
+                region['bottom'] += roi_region['top']
             thumbnail, _ = self.image.getRegion(region=region, format='numpy')
             thumbnails.append(thumbnail)
         return thumbnails
