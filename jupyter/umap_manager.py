@@ -63,10 +63,13 @@ class UMAPManager():
         self._data_path = Path(data_path)
         self._result_path = Path(result_path)
         self._result_path.mkdir(exist_ok=True, parents=True)
-        self._data = self._image_path = self._image = None
-        self._umap_kwargs = DEFAULT_UMAP_KWARGS
+        self._data = self._raw_data = None
+        self._image_path = self._image = None
+        self._sample_size = None
         self._exclude_columns = []
-        self._sample = None
+        self._class_filters = None
+        self._compute_density = True
+        self._umap_kwargs = DEFAULT_UMAP_KWARGS
         if data_path is not None:
             self.read_data(data_path)
 
@@ -91,15 +94,60 @@ class UMAPManager():
         self._exclude_columns = cols
 
     @property
+    def class_filters(self):
+        return self._class_filters
+
+    @class_filters.setter
+    def class_filters(self, classes):
+        if not isinstance(classes, list):
+            raise ValueError('class_filters must be a list.')
+        self._class_filters = classes
+
+    @property
+    def sample_size(self):
+        return self._sample_size
+
+    @sample_size.setter
+    def sample_size(self, n):
+        if not isinstance(n, int):
+            raise ValueError('sample_size must be an integer.')
+        self._sample_size = n
+
+    @property
+    def compute_density(self):
+        return self._compute_density
+
+    @compute_density.setter
+    def compute_density(self, enable):
+        if not isinstance(enable, bool):
+            raise ValueError('compute_density must be a boolean.')
+        self._compute_density = enable
+
+    @property
     def data(self):
-        data = self._sample if self._sample is not None else self._data
-        # drop excluded / non-numeric columns
-        data = data.drop([
-            c for c in data.columns
-            if c in self.exclude_columns or
-            str(data[c].dtype) != 'float64'
-        ], axis=1).fillna(-1)
-        return data
+        if self._data is not None:
+            return self._data
+        else:
+            data = self._raw_data
+            # apply class filter
+            if self.class_filters is not None:
+                data = data[data['Classif.StandardClass'].isin(self._class_filters)]
+            # sample full data
+            if self.sample_size is not None:
+                data = data.sample(self.sample_size)
+            # compute density column
+            if self.compute_density:
+                idx = data.index
+                data =  self.compute_density_column(data.reset_index())
+                data.index = idx
+            # drop excluded / non-numeric columns
+            data = data.drop([
+                c for c in data.columns
+                if c in self.exclude_columns or
+                str(data[c].dtype) != 'float64'
+            ], axis=1).fillna(-1)
+            self._data = data
+            return data
 
     @property
     def normalized_data(self):
@@ -107,7 +155,7 @@ class UMAPManager():
 
     @property
     def columns(self):
-        return self._data.columns
+        return self._raw_data.columns
 
     @property
     def image(self):
@@ -116,10 +164,7 @@ class UMAPManager():
     def reset(self):
         self._umap_kwargs = DEFAULT_UMAP_KWARGS
         self._exclude_columns = []
-        self._sample = None
-
-    def sample(self, n):
-        self._sample = self._data.sample(n)
+        self._sample_size = None
 
     def read_data(self, data_path):
         print('Reading HIPS data.')
@@ -145,12 +190,12 @@ class UMAPManager():
                 intersection_cols = list(meta.columns.intersection(props.columns))
                 props = props.drop(intersection_cols, axis=1)
                 vector = pd.concat([meta, props], axis=1)
-                if self._data is None:
-                    self._data = vector
+                if self._raw_data is None:
+                    self._raw_data = vector
                 else:
-                    self._data = pd.concat([self._data, vector])
-        if self._data is not None:
-            print(f'Found {len(self._data)} features.')
+                    self._raw_data = pd.concat([self._raw_data, vector])
+        if self._raw_data is not None:
+            print(f'Found {len(self._raw_data)} features.')
         else:
             print('Found no HIPS data.')
 
@@ -202,12 +247,15 @@ class UMAPManager():
             figure.data[0].on_selection(selection_callback)
             display(figure)
             display(cell_view)
-        return output_data
+        else:
+            return output_data
 
-    def get_cell_thumbnails(self, cell_indexes):
+    def get_cell_thumbnails(self, cell_indexes=None):
         thumbnails = []
+        if cell_indexes is None:
+            cell_indexes = list(self.data.index)
         for i, index in enumerate(cell_indexes):
-            cell = self._data.iloc[index]
+            cell = self._raw_data.iloc[index]
             scale_multiplier = 2
             margin = 10
             region = dict(
@@ -216,7 +264,7 @@ class UMAPManager():
                 top=max(int(cell['Identifier.Ymin']) * scale_multiplier - margin, 0),
                 bottom=int(cell['Identifier.Ymax']) * scale_multiplier + margin,
             )
-            if len(self._data['roiname'].unique()) > 1:
+            if len(self._raw_data['roiname'].unique()) > 1:
                 roi_split = cell['roiname'].split('_')[2:]
                 roi_region = {s.split('-')[0]: int(s.split('-')[1]) for s in roi_split}
                 region['left'] += roi_region['left']
@@ -227,7 +275,7 @@ class UMAPManager():
             thumbnails.append(thumbnail)
         return thumbnails
 
-    def show_cell_thumbnails(self, cell_indexes):
+    def show_cell_thumbnails(self, cell_indexes=None):
         thumbnails = self.get_cell_thumbnails(cell_indexes)
         children = []
         for thumbnail in thumbnails:
@@ -272,3 +320,29 @@ class UMAPManager():
                 animation_group=data.index,
                 color=data.index,
             ).show()
+
+    def compute_density_column(self, data, n=5):
+        from scipy.spatial.distance import cdist
+
+        def absolute_location(cell):
+            roi_split = cell['roiname'].split('_')[2:]
+            roi_region = {s.split('-')[0]: int(s.split('-')[1]) for s in roi_split}
+            scale_multiplier = 2
+            cell['x'] = cell['Identifier.CentroidX'] * scale_multiplier + roi_region['left']
+            cell['y'] = cell['Identifier.CentroidX'] * scale_multiplier + roi_region['top']
+            return cell
+
+        def nearest_n_density(distances):
+            # exclude distance of 0 (distance to self)
+            nearest_idx = np.argpartition(distances[distances > 0], n)
+            nearest_distances = distances[nearest_idx[:n]]
+            density = n / np.sum(nearest_distances)
+            return density
+
+        print('Computing density column.')
+        locations = data.apply(absolute_location, axis=1)[['x', 'y']]
+        distances = pd.DataFrame(
+            cdist(locations, locations, metric='euclidean')
+        )
+        data['density'] = distances.apply(nearest_n_density, axis=1)
+        return data
