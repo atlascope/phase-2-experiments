@@ -13,6 +13,7 @@ import umap
 from IPython.display import display
 from PIL import Image
 from sklearn.preprocessing import normalize
+from scipy.spatial.distance import cdist
 
 # from https://umap-learn.readthedocs.io/en/latest/api.html
 DEFAULT_UMAP_KWARGS = dict(
@@ -70,6 +71,8 @@ class UMAPManager():
         self._class_filters = None
         self._compute_density = True
         self._umap_kwargs = DEFAULT_UMAP_KWARGS
+        self._umap_transform = None
+        self._cache = kwargs.get('cache', True)
         if data_path is not None:
             self.read_data(data_path)
 
@@ -150,10 +153,6 @@ class UMAPManager():
             return data
 
     @property
-    def normalized_data(self):
-        return normalize(self.data, axis=1, norm='l1')
-
-    @property
     def columns(self):
         return self._raw_data.columns
 
@@ -163,6 +162,7 @@ class UMAPManager():
 
     def reset(self):
         self._umap_kwargs = DEFAULT_UMAP_KWARGS
+        self._umap_transform = None
         self._exclude_columns = []
         self._sample_size = None
 
@@ -199,28 +199,42 @@ class UMAPManager():
         else:
             print('Found no HIPS data.')
 
-    def find_existing_result(self):
+    def find_existing_result(self, input_data):
         for existing_result_file in self._result_path.glob('*.json'):
             with open(existing_result_file) as f:
                 existing_result = json.load(f)
                 if (
                     existing_result.get('umap_kwargs') == self._umap_kwargs and
-                    existing_result.get('input_data') == self.normalized_data.tolist()
+                    existing_result.get('input_data') == input_data.tolist()
                 ):
                     return np.array(existing_result.get('output_data'))
 
-    def reduce_dims(self, plot=False, **kwargs):
+    def reduce_dims(self, input_data=None, plot=False, **kwargs):
         exclude_columns = kwargs.pop('exclude_columns', None)
         if exclude_columns is not None:
             self.exclude_columns = exclude_columns
         self.umap_kwargs = kwargs
-        output_data = self.find_existing_result()
+        if input_data is None:
+            input_data = self.data
+        input_data = normalize(input_data, axis=1, norm='l1')
+        output_data = None
+        if self._cache:
+            output_data = self.find_existing_result(input_data)
         if output_data is None:
             filename = datetime.now().strftime("%Y_%m_%d_%H_%M_%S_%f") + '.json'
             result_filepath = self._result_path / filename
-            fit = umap.UMAP(**self._umap_kwargs)
-            input_data = self.normalized_data
-            output_data = fit.fit_transform(input_data)
+
+            if self._umap_transform is None:
+                print('Training UMAP Transform.')
+                start = datetime.now()
+                self._umap_transform = umap.UMAP(**self._umap_kwargs).fit(input_data)
+                print(f'Completed training in {(datetime.now() - start).total_seconds()} seconds.')
+
+            print(f'Running inference on {len(input_data)} cells with trained UMAP Transform.')
+            start = datetime.now()
+            output_data = self._umap_transform.transform(input_data)
+            print(f'Completed inference in {(datetime.now() - start).total_seconds()} seconds.')
+
             with open(result_filepath, 'w') as f:
                 json.dump(dict(
                     umap_kwargs=self._umap_kwargs,
@@ -250,6 +264,25 @@ class UMAPManager():
         else:
             return output_data
 
+    def nearest_neighbors(self, cell_indexes=None, n=5, show=False):
+        all_mapped_points = self.reduce_dims()
+        if cell_indexes is None:
+            cell_indexes = list(self.data.index)
+        input_data = self.data.iloc[cell_indexes]
+        target_mapped_points = self.reduce_dims(input_data)
+        distances = cdist(target_mapped_points, all_mapped_points, metric='euclidean')
+        nearest = np.argpartition(distances, n, axis=1)[:, :n]
+        if show:
+            for i, cell_index in enumerate(cell_indexes):
+                print(f'Cell {cell_index}:')
+                self.show_cell_thumbnails([cell_index])
+                print(f'{n} most similar cells:')
+                self.show_cell_thumbnails(nearest[i])
+                print()
+        else:
+            return nearest
+
+
     def get_cell_thumbnails(self, cell_indexes=None):
         thumbnails = []
         if cell_indexes is None:
@@ -275,7 +308,7 @@ class UMAPManager():
             thumbnails.append(thumbnail)
         return thumbnails
 
-    def show_cell_thumbnails(self, cell_indexes=None):
+    def show_cell_thumbnails(self, cell_indexes=None, show=True):
         thumbnails = self.get_cell_thumbnails(cell_indexes)
         children = []
         for thumbnail in thumbnails:
@@ -283,7 +316,10 @@ class UMAPManager():
             im = Image.fromarray(thumbnail, 'RGB')
             im.save(f, 'png')
             children.append(ipywidgets.Image(value=f.getvalue(), format='png'))
-        return ipywidgets.GridBox(children, layout=ipywidgets.Layout(grid_template_columns="repeat(10, 100px)"))
+        result = ipywidgets.GridBox(children, layout=ipywidgets.Layout(grid_template_columns="repeat(10, 100px)"))
+        if show:
+            display(result)
+        return result
 
     def compare_reductions(self, **reductions):
         data = None
@@ -322,8 +358,6 @@ class UMAPManager():
             ).show()
 
     def compute_density_column(self, data, n=5):
-        from scipy.spatial.distance import cdist
-
         def absolute_location(cell):
             roi_split = cell['roiname'].split('_')[2:]
             roi_region = {s.split('-')[0]: int(s.split('-')[1]) for s in roi_split}
