@@ -10,6 +10,8 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import umap
+import pickle
+
 from IPython.display import display
 from PIL import Image
 from sklearn.preprocessing import normalize
@@ -195,6 +197,20 @@ class UMAPManager():
             print(f'Found {len(self._raw_data)} features.')
         else:
             print('Found no HIPS data.')
+
+    def save_transform(self, path):
+        if self._umap_transform is None:
+            raise AttributeError('UMAP Transform has not been trained yet. Run `reduce_dims` first.')
+        with open(path, 'wb') as f:
+            pickle.dump(self._umap_transform, f)
+        print(f'Saved UMAP Transform to {path}.')
+
+    def load_transform(self, path, overwrite=False):
+        if self._umap_transform is not None and not overwrite:
+            raise AttributeError('UMAP Transform already exists. Pass `overwrite=True` to allow overwrite.')
+        with open(path, 'rb') as f:
+            self._umap_transform = pickle.load(f)
+        print(f'Loaded UMAP Transform from {path}.')
 
     def train_transform(self, input_data):
         print('Training UMAP Transform.')
