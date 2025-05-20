@@ -138,7 +138,7 @@ class UMAPManager():
             # compute density column
             if self.compute_density:
                 idx = data.index
-                data =  self.compute_density_column(data.reset_index())
+                data =  self.compute_density_column(data.reset_index(), full=self._raw_data)
                 data.index = idx
             # drop excluded / non-numeric columns
             data = data.drop([
@@ -196,6 +196,19 @@ class UMAPManager():
         else:
             print('Found no HIPS data.')
 
+    def train_transform(self, input_data):
+        print('Training UMAP Transform.')
+        start = datetime.now()
+        self._umap_transform = umap.UMAP(**self._umap_kwargs).fit(input_data)
+        print(f'Completed training in {(datetime.now() - start).total_seconds()} seconds.')
+
+    def transform_inference(self, input_data):
+        print(f'Running inference on {len(input_data)} cells with trained UMAP Transform.')
+        start = datetime.now()
+        output_data = self._umap_transform.transform(input_data)
+        print(f'Completed inference in {(datetime.now() - start).total_seconds()} seconds.')
+        return output_data
+
     def reduce_dims(self, input_data=None, plot=False, **kwargs):
         exclude_columns = kwargs.pop('exclude_columns', None)
         if exclude_columns is not None:
@@ -204,19 +217,9 @@ class UMAPManager():
         if input_data is None:
             input_data = self.data
         input_data = normalize(input_data, axis=1, norm='l1')
-        output_data = None
-        if output_data is None:
-            if self._umap_transform is None:
-                print('Training UMAP Transform.')
-                start = datetime.now()
-                self._umap_transform = umap.UMAP(**self._umap_kwargs).fit(input_data)
-                print(f'Completed training in {(datetime.now() - start).total_seconds()} seconds.')
-
-            print(f'Running inference on {len(input_data)} cells with trained UMAP Transform.')
-            start = datetime.now()
-            output_data = self._umap_transform.transform(input_data)
-            print(f'Completed inference in {(datetime.now() - start).total_seconds()} seconds.')
-
+        if self._umap_transform is None:
+            self.train_transform(input_data)
+        output_data = self.transform_inference(input_data)
         if plot:
             data = pd.DataFrame(output_data, columns=['x', 'y'])
             scatter = go.Scatter(
@@ -257,7 +260,6 @@ class UMAPManager():
                 print()
         else:
             return nearest
-
 
     def get_cell_thumbnails(self, cell_indexes=None):
         thumbnails = []
@@ -333,7 +335,7 @@ class UMAPManager():
                 color=data.index,
             ).show()
 
-    def compute_density_column(self, data, n=5):
+    def compute_density_column(self, data, n=5, full=None):
         def absolute_location(cell):
             roi_split = cell['roiname'].split('_')[2:]
             roi_region = {s.split('-')[0]: int(s.split('-')[1]) for s in roi_split}
@@ -350,9 +352,13 @@ class UMAPManager():
             return density
 
         print('Computing density column.')
-        locations = data.apply(absolute_location, axis=1)[['x', 'y']]
+        data_locations = data.apply(absolute_location, axis=1)[['x', 'y']]
+        if full is not None:
+            full_locations = full.apply(absolute_location, axis=1)[['x', 'y']]
+        else:
+            full_locations = data_locations
         distances = pd.DataFrame(
-            cdist(locations, locations, metric='euclidean')
+            cdist(data_locations, full_locations, metric='euclidean')
         )
         data['density'] = distances.apply(nearest_n_density, axis=1)
         return data
