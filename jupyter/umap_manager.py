@@ -60,10 +60,8 @@ DEFAULT_UMAP_KWARGS = dict(
 
 
 class UMAPManager():
-    def __init__(self, data_path=None, result_path=None, **kwargs):
+    def __init__(self, data_path=None, **kwargs):
         self._data_path = Path(data_path)
-        self._result_path = Path(result_path)
-        self._result_path.mkdir(exist_ok=True, parents=True)
         self._data = self._raw_data = None
         self._image_path = self._image = None
         self._sample_size = None
@@ -72,7 +70,6 @@ class UMAPManager():
         self._compute_density = True
         self._umap_kwargs = DEFAULT_UMAP_KWARGS
         self._umap_transform = None
-        self._cache = kwargs.get('cache', True)
         if data_path is not None:
             self.read_data(data_path)
 
@@ -199,16 +196,6 @@ class UMAPManager():
         else:
             print('Found no HIPS data.')
 
-    def find_existing_result(self, input_data):
-        for existing_result_file in self._result_path.glob('*.json'):
-            with open(existing_result_file) as f:
-                existing_result = json.load(f)
-                if (
-                    existing_result.get('umap_kwargs') == self._umap_kwargs and
-                    existing_result.get('input_data') == input_data.tolist()
-                ):
-                    return np.array(existing_result.get('output_data'))
-
     def reduce_dims(self, input_data=None, plot=False, **kwargs):
         exclude_columns = kwargs.pop('exclude_columns', None)
         if exclude_columns is not None:
@@ -218,12 +205,7 @@ class UMAPManager():
             input_data = self.data
         input_data = normalize(input_data, axis=1, norm='l1')
         output_data = None
-        if self._cache:
-            output_data = self.find_existing_result(input_data)
         if output_data is None:
-            filename = datetime.now().strftime("%Y_%m_%d_%H_%M_%S_%f") + '.json'
-            result_filepath = self._result_path / filename
-
             if self._umap_transform is None:
                 print('Training UMAP Transform.')
                 start = datetime.now()
@@ -235,12 +217,6 @@ class UMAPManager():
             output_data = self._umap_transform.transform(input_data)
             print(f'Completed inference in {(datetime.now() - start).total_seconds()} seconds.')
 
-            with open(result_filepath, 'w') as f:
-                json.dump(dict(
-                    umap_kwargs=self._umap_kwargs,
-                    input_data=input_data.tolist(),
-                    output_data=output_data.tolist(),
-                ), f)
         if plot:
             data = pd.DataFrame(output_data, columns=['x', 'y'])
             scatter = go.Scatter(
