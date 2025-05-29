@@ -236,13 +236,15 @@ class UMAPManager():
         if self._umap_transform is None:
             self.train_transform(input_data)
         output_data = self.transform_inference(input_data)
+        df = pd.DataFrame(output_data, columns=['x', 'y'])
+        if kwargs.get('parquet_path'):
+            df.to_parquet(kwargs.get('parquet_path'))
         if plot:
-            data = pd.DataFrame(output_data, columns=['x', 'y'])
             scatter = go.Scatter(
-                x=data['x'],
-                y=data['y'],
+                x=df['x'],
+                y=df['y'],
                 mode='markers',
-                marker=dict(color=data.index)
+                marker=dict(color=df.index)
             )
             figure = go.FigureWidget(data=[scatter])
             cell_view = ipywidgets.VBox()
