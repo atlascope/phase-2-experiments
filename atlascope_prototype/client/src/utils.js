@@ -91,8 +91,8 @@ export function normalizePoints(points) {
   const yMax = Math.max(...points.map((p) => p.y));
   return points.map((p) => ({
     ...p,
-    x: (p.x - xMin) / (xMax - p.x),
-    y: (p.y - yMin) / (yMax - p.y),
+    x: (p.x - xMin) / (xMax - xMin),
+    y: (p.y - yMin) / (yMax - yMin),
   }));
 }
 
