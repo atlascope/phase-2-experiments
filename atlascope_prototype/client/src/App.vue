@@ -79,9 +79,9 @@ export default defineComponent({
       })
       if (root._id === parent_id) {
         root.children = children;
-        root.parquet = root.children.find((c) => c.name === root.name + '.parquet');
-        root.image = root.children.find((c) => c.name === root.name + '.svs');
-        root.results = root.children.filter((c) => c.name.match(`${root.name} (UMAP|TSNE) \\(\\d+\\).parquet`))
+        root.image = root.children.find((c) => c.name.endsWith('.svs'));
+        root.results = root.children.filter((c) => c.name.toLowerCase().includes('umap') || c.name.toLowerCase().includes('tsne'))
+        root.parquet = root.children.find((c) => c.name.endsWith('.parquet') && !root.results.includes(c))
         if (root.image) {
           root.children = undefined;
         }
