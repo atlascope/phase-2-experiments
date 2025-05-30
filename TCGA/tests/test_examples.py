@@ -26,10 +26,11 @@ def test_case_upload():
     )
     expected_output = [
         'Uploading examples...',
+        'Uploading image for test.',
         'Generating parquet file of vector data...',
         'Reading features in 3 region\(s\).',
         'Found 3586 features.',
-        'Uploading image and parquet file for test.',
+        'Uploading parquet file for test.',
         'Completed upload in ([\d:.]*) seconds.'
     ]
     compare_outputs(output, expected_output)
