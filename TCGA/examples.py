@@ -43,16 +43,23 @@ def upload_examples(cases, username=None, password=None):
     for case_folder in DOWNLOADS_FOLDER.glob('*'):
         case_name = case_folder.name
         if (cases is None and 'test' not in case_name) or (cases is not None and case_name in cases):
-            case_folder_item = get_case_folder_item(client, case_name)
-            image_path = case_folder / (f'{case_name}.svs' if case_name != 'test' else 'tcgaextract_rgb.tiff')
-            if image_path.exists():
+            if case_name == 'test':
+                image_path = case_folder / 'tcgaextract_rgb.tiff'
+            else:
+                matches = case_folder.glob('*.svs')
+                image_path = next(matches, None)
+                if next(matches, None) is not None:
+                    raise RuntimeError(f'{case_name} has more than one .svs file. Only one image can be used per case.')
+            if image_path is not None and image_path.exists():
+                print(f'Uploading image for {case_name}.')
+                case_folder_item = get_case_folder_item(client, case_name)
+                sync_file(client, case_folder_item, image_path)
                 parquet_path = case_folder / f'{case_name}.parquet'
                 if not parquet_path.exists():
                     print('Generating parquet file of vector data...')
                     vector = get_case_vector(case_name=case_name)
                     vector.to_parquet(parquet_path)
-                print(f'Uploading image and parquet file for {case_name}.')
-                sync_file(client, case_folder_item, image_path)
+                print(f'Uploading parquet file for {case_name}.')
                 sync_file(client, case_folder_item, parquet_path)
     print(f'Completed upload in {datetime.now() - start} seconds.')
 
