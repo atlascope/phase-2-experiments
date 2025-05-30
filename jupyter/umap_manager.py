@@ -128,7 +128,7 @@ class UMAPManager():
     @property
     def data(self):
         if self._data is not None:
-            return self._data
+            data = self._data
         else:
             data = self._raw_data
             # apply class filter
@@ -142,14 +142,14 @@ class UMAPManager():
                 idx = data.index
                 data =  self.compute_density_column(data.reset_index(), full=self._raw_data)
                 data.index = idx
-            # drop excluded / non-numeric columns
-            data = data.drop([
-                c for c in data.columns
-                if c in self.exclude_columns or
-                str(data[c].dtype) != 'float64'
-            ], axis=1).fillna(-1)
             self._data = data
-            return data
+        # drop excluded / non-numeric columns
+        data = data.drop([
+            c for c in data.columns
+            if c in self.exclude_columns or
+            str(data[c].dtype) != 'float64'
+        ], axis=1).fillna(-1)
+        return data
 
     @property
     def columns(self):
@@ -197,6 +197,11 @@ class UMAPManager():
             print(f'Found {len(self._raw_data)} features.')
         else:
             print('Found no HIPS data.')
+
+    def write_data_parquet(self, path):
+        if self._data is None:
+            self.data
+        self._data.to_parquet(path)
 
     def save_transform(self, path):
         if self._umap_transform is None:
