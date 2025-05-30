@@ -130,7 +130,7 @@ export default defineComponent({
         const caseFolder = activeImage.value[0];
         loading.value = true;
         fetchNuclei(caseFolder.parquet).then((data) => {
-          nuclei.value =  data;
+          if (data)  nuclei.value = data;
           loading.value = false;
         })
         availableResults.value = caseFolder.results.map((result) => {
@@ -282,7 +282,7 @@ export default defineComponent({
     }
 
     function updateNumVisible() {
-      if (nuclei.value.length && showEllipses.value) {
+      if (featureLayer.value && nuclei.value.length && showEllipses.value) {
         const feature = featureLayer.value.features()[0];
         const polySearch = feature.polygonSearch(map.value.corners());
         numVisible.value = polySearch.found?.length;
@@ -373,7 +373,7 @@ export default defineComponent({
         if (!parent.children?.length) {
           loadChildren(parent).then(() => {
             // preemptively load 1 level below what's open
-            parent.children.forEach(loadChildren)
+            if (parent.children) parent.children.forEach(loadChildren)
           });
         }
       })
@@ -509,7 +509,7 @@ export default defineComponent({
           Loading Feature Vector Data...
         </v-card>
         <v-card
-          v-if="activeImage && nuclei.length"
+          v-if="activeImage && nuclei && nuclei.length"
           class="over-map pa-3"
           style="width: fit-content; right: 10px"
         >
@@ -524,7 +524,7 @@ export default defineComponent({
         ></v-btn>
       </div>
     </v-main>
-    <VResizeDrawer v-if="nuclei.length" location="right" name="right">
+    <VResizeDrawer v-if="nuclei && nuclei.length" location="right" name="right">
       <v-card-title class="pa-3">Nuclei Options</v-card-title>
       <v-switch
         v-if="nuclei.length"
