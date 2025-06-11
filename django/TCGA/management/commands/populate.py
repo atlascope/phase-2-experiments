@@ -13,6 +13,11 @@ class Command(BaseCommand):
                 name='TCGA-3C-AALI-01Z-00-DX1',
                 tile_url='http://parakon.khq:8088/api/v1/item/66d0bba8808445a354b9fbd3/tiles/',
                 nuclei_url='https://data.kitware.com/api/v1/item/6849f52047746876d541ed7d/download'
+            ),
+            dict(
+                name='TCGA-3C-AALK-01Z-00-DX1',
+                tile_url='http://parakon.khq:8088/api/v1/item/669ee0e6729025a5bdacafbf/tiles',
+                nuclei_url='https://data.kitware.com/api/v1/item/6849fa5147746876d541ed80/download'
             )
         ]
         for image in images:
