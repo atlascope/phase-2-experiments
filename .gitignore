@@ -165,6 +165,7 @@ cython_debug/
 # Project-specific locations
 TCGA/downloads
 TCGA/annotations/*
+TCGA/ellipses/*
 !TCGA/annotations/test_annotation.json
 TCGA/reduce_dims_results/*
 
