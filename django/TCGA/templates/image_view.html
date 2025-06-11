@@ -1,0 +1,50 @@
+<html>
+<head>
+    <script src="https://cdn.jsdelivr.net/npm/geojs/geo.min.js"></script>
+    <script>
+        const tileUrl = '{{ tile_url }}'
+        const nuclei = JSON.parse('{{ nuclei|safe }}')
+        fetch(tileUrl).then(response => response.json().then(tileInfo => {
+            const maxZoom = tileInfo.levels - 1;
+            let params = geo.util.pixelCoordinateParams(
+                '#map', tileInfo.sizeX, tileInfo.sizeY, tileInfo.tileWidth, tileInfo.tileHeight
+            );
+            const map = geo.map(params.map);
+            params.layer.url = `${tileUrl}/zxy/{z}/{x}/{y}`;
+            const layer = map.createLayer('osm', params.layer);
+            const featureLayer = map.createLayer('feature', {
+                features: ['marker']
+            });
+            const feature = featureLayer.createFeature('marker').data(nuclei)
+            feature.style({
+                radius: (item) => item.width / (2 ** (maxZoom + 1)),
+                rotation: (item) => item.width > item.height ? item.orientation : item.orientation + Math.PI / 2,
+                symbolValue: (item) => Math.min(item.width, item.height) / Math.max(item.width, item.height),
+                symbol: geo.markerFeature.symbols.ellipse,
+                scaleWithZoom: geo.markerFeature.scaleMode.fill,
+                rotateWithMap: true,
+                strokeColor: '#00ff00',
+                strokeWidth: 4,
+                strokeOffset: 1,
+                strokeOpacity: 1,
+                fillOpacity: 0,
+            })
+            feature.draw()
+            featureLayer.draw()
+            map.draw()
+        }));
+    </script>
+    <style>
+        html,body,#map{
+            width: 100%;
+            height: 100%;
+            padding: 0;
+            margin: 0;
+            overflow: hidden;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+</body>
+</html>
