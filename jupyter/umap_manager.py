@@ -358,6 +358,29 @@ class UMAPManager():
                 color=data.index,
             ).show()
 
+    def compare_inverse_transform(self, n=1):
+        forward = self.reduce_dims()
+        data = pd.DataFrame(forward, columns=['x', 'y'])
+        data['set'] = 'forward'
+
+        reforward = forward
+        for i in range(n):
+            backward = self._umap_transform.inverse_transform(reforward)
+            reforward = self._umap_transform.transform(backward)
+            current_data = pd.DataFrame(reforward, columns=['x', 'y'])
+            current_data['set'] = f'reforward {i}'
+            data = pd.concat([data, current_data])
+
+        fig = px.scatter(
+            data,
+            x='x', y='y',
+            animation_frame='set',
+            animation_group=data.index,
+            color=data.index,
+        )
+        fig.update_layout(transition=dict(duration=6000))
+        fig.show()
+
     def compute_density_column(self, data, n=5, full=None):
         def absolute_location(cell):
             roi_split = cell['roiname'].split('_')[2:]
