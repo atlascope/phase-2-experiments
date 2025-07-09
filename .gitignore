@@ -170,3 +170,5 @@ TCGA/reduce_dims_results/*
 
 atlascope_prototype/client/node_modules
 !atlascope_prototype/client/dist
+
+jupyter/umap_results
